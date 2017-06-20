@@ -7,7 +7,7 @@
 #include "ncwrapper.h"
 
 #define FILE_NAME "./ncar_files/pressure/air.2001.nc"
-
+#define COPY "./ncar_files/pressure/air.2001.copy.nc"
 
 /* Used by main() and wrapper functions */
 int retval;
@@ -26,7 +26,7 @@ size_t LAT_STRIDE;
 
 
 int main() {
-    int nc_file_handle; // nc_open
+    int file, copy; // nc_open
 
     int num_dims, num_vars, num_global_attrs, unlimdimidp; // nc_inq
 
@@ -51,42 +51,48 @@ int main() {
     // printf("File dir: %s\n", cwd);
 
     // Open the file 
-    ___nc_open(FILE_NAME, &nc_file_handle);
+    ___nc_open(FILE_NAME, &file);
 
-    // Get some info about the file 
-    nc_inq(nc_file_handle, &num_dims, &num_vars, &num_global_attrs, &unlimdimidp);
+    ___nc_create(COPY, &copy);
+
+    // File Info
+    nc_inq(file, &num_dims, &num_vars, &num_global_attrs, &unlimdimidp);
     printf("Num dims: %d\t Num vars: %d\t Num global attr: %d\n", num_dims, num_vars, num_global_attrs);
 
-    // Now we can loop through the dimension data and see what we have here
     printf("Dimension Information:\n");
-    dim_names = (char **) malloc(num_dims * sizeof(char *));
+    dim_names 	= (char **) malloc(num_dims * sizeof(char *));
     dim_lengths = (size_t *) malloc(num_dims * sizeof(size_t));
     for (int i = 0; i < num_dims; i++) {
     	dim_names[i] = (char *) malloc((NC_MAX_NAME + 1) * sizeof(char)); // allocate space for names
-	    ___nc_inq_dim(nc_file_handle, i, dim_names[i], &dim_lengths[i]); // returns dimension name and length
+	    ___nc_inq_dim(file, i, dim_names[i], &dim_lengths[i]); // returns dimension name and length
     }
 
-    // Same thing for vars
     printf("Variable Information:\n");
-    var_names 	= (char **) malloc(num_vars * sizeof(char *));
-    var_types 	= (nc_type *) malloc(num_vars * sizeof(nc_type));
-    var_num_dims 	= (int *) 	malloc(num_vars * sizeof(int *));
-    var_attrs 	= (int *) 	malloc(num_vars * sizeof(int *));
-    var_dim_ids = (int **) 	malloc(num_vars * sizeof(int *));
+    var_names 		= (char **) 	malloc(num_vars * sizeof(char *));
+    var_types 		= (nc_type *) 	malloc(num_vars * sizeof(nc_type));
+    var_num_dims 	= (int *) 		malloc(num_vars * sizeof(int *));
+    var_attrs 		= (int *) 		malloc(num_vars * sizeof(int *));
+    var_dim_ids 	= (int **) 		malloc(num_vars * sizeof(int *));
     for (int i = 0; i < num_vars; i++) {
     	var_names[i] = (char *) malloc((NC_MAX_NAME + 1) * sizeof(char));
     	var_dim_ids[i] = (int *) malloc(NC_MAX_VAR_DIMS * sizeof(int));
-    	___nc_inq_var(nc_file_handle, i, var_names[i], &var_types[i], &var_num_dims[i], var_dim_ids[i], var_attrs, dim_names);
+    	___nc_inq_var(file, i, var_names[i], &var_types[i], &var_num_dims[i], var_dim_ids[i], var_attrs, dim_names);
 
     }
 
-    float* dest;
-    // now to get variable information. nc_get_vara can handle multidimensional data.
+    void* var_data[num_vars];
+    size_t var_size[num_vars];
     for (int i = 0; i < num_vars; i++) {
-    	___nc_get_var_array(nc_file_handle, i, var_names[i], var_types[i], var_num_dims[i], var_dim_ids[i], dim_lengths, (void *) &dest);
-    	printf("dest[%d] = %f\nn", i, dest[0]);
+    	___nc_get_var_array(file, i, var_names[i], var_types[i], var_num_dims[i], var_dim_ids[i], dim_lengths, (void *) &var_data[i], &var_size[i]);
     }
 
+	// for (int i = 0; i < num_vars - 1; i++) {
+	// 	for (int j = 0; j < var_size[i]; j++) {
+	// 		printf("dat[%d] = %f\n", j, &var_data[i][j]);
+	// 	}
+	// }    
+
+    /* Ensure the dimensions are as expected. Not sure what to do if not. Level will be '2' if present; else Time will be '2'. */
     assert( 0 == strcmp(dim_names[0],"lon") &&
 			0 == strcmp(dim_names[1],"lat") &&
 			0 == strcmp(dim_names[2],"level") &&
@@ -97,9 +103,13 @@ int main() {
 	LVL_STRIDE 	= dim_lengths[0] * dim_lengths[1];
 	LAT_STRIDE 	= dim_lengths[0];
 
-
 	/* Can start accessing wherever in the 1D array now */
-	___test_access_nc_array(dest);
+	___test_access_nc_array(var_data[4]);
+
+	temporal_interpolate(var_data[4], var_num_dims[4], var_dim_ids[4], dim_lengths);
+
+	nc_close(file);
+	nc_close(copy);
 
     return 0; 
 }
