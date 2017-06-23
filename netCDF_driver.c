@@ -31,15 +31,18 @@ int main() {
     int num_dims, num_vars, num_global_attrs, unlimdimidp; // nc_inq
 
 	// nc_inq_dim
-    char** dim_names; 
-    size_t* dim_lengths;
+    // char** dim_names; 
+    // size_t* dim_lengths;
 
     // nc_inq_var
-    char** var_names; // array of names
-    nc_type* var_types;
-    int* var_num_dims; // each var may have dif num of dimensions
-    int* var_attrs;
-    int** var_dim_ids; // use 2D array so each var (row) can store its dim_ids (columns)
+    // char** var_names; // array of names
+    // nc_type* var_types;
+    // int* var_num_dims; // each var may have dif num of dimensions
+    // int* var_attrs;
+    // int** var_dim_ids; // use 2D array so each var (row) can store its dim_ids (columns)
+
+    Variable* vars;
+    Dimension* dims;
 
     // char cwd[1024];
     // getcwd(cwd, sizeof(cwd));
@@ -60,53 +63,56 @@ int main() {
     printf("Num dims: %d\t Num vars: %d\t Num global attr: %d\n", num_dims, num_vars, num_global_attrs);
 
     printf("Dimension Information:\n");
-    dim_names 	= (char **) malloc(num_dims * sizeof(char *));
-    dim_lengths = (size_t *) malloc(num_dims * sizeof(size_t));
+    // dim_names 	= (char **) malloc(num_dims * sizeof(char *));
+    // dim_lengths = (size_t *) malloc(num_dims * sizeof(size_t));
+
+    dims = (Dimension *) malloc(num_dims * sizeof(Dimension));
     for (int i = 0; i < num_dims; i++) {
-    	dim_names[i] = (char *) malloc((NC_MAX_NAME + 1) * sizeof(char)); // allocate space for names
-	    ___nc_inq_dim(file, i, dim_names[i], &dim_lengths[i]); // returns dimension name and length
+    	// dim_names[i] = (char *) malloc((NC_MAX_NAME + 1) * sizeof(char)); // allocate space for names
+	    // ___nc_inq_dim(file, i, dim_names[i], &dim_lengths[i]); // returns dimension name and length
+
+	    ___nc_inq_dim(file, i, &dims[i]);
     }
 
     printf("Variable Information:\n");
-    var_names 		= (char **) 	malloc(num_vars * sizeof(char *));
-    var_types 		= (nc_type *) 	malloc(num_vars * sizeof(nc_type));
-    var_num_dims 	= (int *) 		malloc(num_vars * sizeof(int *));
-    var_attrs 		= (int *) 		malloc(num_vars * sizeof(int *));
-    var_dim_ids 	= (int **) 		malloc(num_vars * sizeof(int *));
+    // var_names 		= (char **) 	malloc(num_vars * sizeof(char *));
+    // var_types 		= (nc_type *) 	malloc(num_vars * sizeof(nc_type));
+    // var_num_dims 	= (int *) 		malloc(num_vars * sizeof(int *));
+    // var_attrs 		= (int *) 		malloc(num_vars * sizeof(int *));
+    // var_dim_ids 	= (int **) 		malloc(num_vars * sizeof(int *));
+
+    vars = (Variable *) malloc(num_vars * sizeof(Variable));
     for (int i = 0; i < num_vars; i++) {
-    	var_names[i] = (char *) malloc((NC_MAX_NAME + 1) * sizeof(char));
-    	var_dim_ids[i] = (int *) malloc(NC_MAX_VAR_DIMS * sizeof(int));
-    	___nc_inq_var(file, i, var_names[i], &var_types[i], &var_num_dims[i], var_dim_ids[i], var_attrs, dim_names);
+    	// var_names[i] = (char *) malloc((NC_MAX_NAME + 1) * sizeof(char));
+    	// var_dim_ids[i] = (int *) malloc(NC_MAX_VAR_DIMS * sizeof(int));
+    	// ___nc_inq_var(file, i, var_names[i], &var_types[i], &var_num_dims[i], var_dim_ids[i], var_attrs, dim_names);
+
+    	___nc_inq_var(file, i, &vars[i], dims);
 
     }
 
-    void* var_data[num_vars];
-    size_t var_size[num_vars];
+    // void* var_data[num_vars];
+    // size_t var_size[num_vars];
     for (int i = 0; i < num_vars; i++) {
-    	___nc_get_var_array(file, i, var_names[i], var_types[i], var_num_dims[i], var_dim_ids[i], dim_lengths, (void *) &var_data[i], &var_size[i]);
+    	___nc_get_var_array(file, i, &vars[i], dims);
     }
 
-	// for (int i = 0; i < num_vars - 1; i++) {
-	// 	for (int j = 0; j < var_size[i]; j++) {
-	// 		printf("dat[%d] = %f\n", j, &var_data[i][j]);
-	// 	}
-	// }    
 
     /* Ensure the dimensions are as expected. Not sure what to do if not. Level will be '2' if present; else Time will be '2'. */
-    assert( 0 == strcmp(dim_names[0],"lon") &&
-			0 == strcmp(dim_names[1],"lat") &&
-			0 == strcmp(dim_names[2],"level") &&
-			0 == strcmp(dim_names[3],"time"));
+    assert( 0 == strcmp(dims[0].name,"lon") &&
+			0 == strcmp(dims[1].name,"lat") &&
+			0 == strcmp(dims[2].name,"level") &&
+			0 == strcmp(dims[3].name,"time"));
 
     /* Now we can set stride length global vars */
-    TIME_STRIDE = dim_lengths[0] * dim_lengths[1] * dim_lengths[2];
-	LVL_STRIDE 	= dim_lengths[0] * dim_lengths[1];
-	LAT_STRIDE 	= dim_lengths[0];
+    TIME_STRIDE = dims[0].length * dims[1].length * dims[2].length;
+	LVL_STRIDE 	= dims[0].length * dims[1].length;
+	LAT_STRIDE 	= dims[0].length;
 
 	/* Can start accessing wherever in the 1D array now */
-	___test_access_nc_array(var_data[4]);
+	___test_access_nc_array(&vars[4]);
 
-	temporal_interpolate(var_data[4], var_num_dims[4], var_dim_ids[4], dim_lengths);
+	// temporal_interpolate(var_data[4], var_num_dims[4], var_dim_ids[4], dim_lengths);
 
 	nc_close(file);
 	nc_close(copy);

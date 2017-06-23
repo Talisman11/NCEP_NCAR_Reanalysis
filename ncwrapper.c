@@ -63,11 +63,13 @@ void ___nc_create(char* file_name, int* file_handle) {
 		NC_ERR(retval);
 }
 
-void ___nc_inq_dim(int file_handle, int id, char* name, size_t* length) {
-	if ((retval = nc_inq_dim(file_handle, id, name, length))) 
+// void ___nc_inq_dim(int file_handle, int id, char* name, size_t* length) {
+void ___nc_inq_dim(int file_handle, int id, Dimension* dim) {
+	if ((retval = nc_inq_dim(file_handle, id, dim->name, &dim->length))) 
 		NC_ERR(retval);
 
-    printf("\tName: %s\t ID: %d\t Length: %lu\n", name, id, *length);
+	dim->id = id;
+    printf("\tName: %s\t ID: %d\t Length: %lu\n", dim->name, dim->id, dim->length);
 }
 
 void ___nc_inq_att(int file_handle, int var_id, int num_attrs) {
@@ -93,55 +95,80 @@ void ___nc_inq_att(int file_handle, int var_id, int num_attrs) {
 	
 }
 
-void ___nc_inq_var(int file_handle, int id, char* name, nc_type* type, int* num_dims, int* dim_ids, int* num_attrs, char** dim_names) {
-	if((retval = nc_inq_var(file_handle, id, name, type, num_dims, dim_ids, num_attrs)))
+// void ___nc_inq_var(int file_handle, int id, char* name, nc_type* type, int* num_dims, int* dim_ids, int* num_attrs, char** dim_names) {
+// 	if((retval = nc_inq_var(file_handle, id, name, type, num_dims, dim_ids, num_attrs)))
+// 		NC_ERR(retval);
+
+//     printf("\tName: %s\t ID: %d\t netCDF_type: %s\t Num_dims: %d\t Num_attrs: %d\n", 
+//     	name, id, ___nc_type(*type), *num_dims, *num_attrs);
+
+//     for (int i = 0; i < *num_dims; i++) {
+//     	printf("\tDim_id[%d] = %d (%s)\n", i, dim_ids[i], dim_names[dim_ids[i]]);
+//     }
+
+//     // Display attribute data
+// 	___nc_inq_att(file_handle, id, *num_attrs);
+// }
+
+
+void ___nc_inq_var(int file_handle, int id, Variable* var, Dimension* dims) {
+	if((retval = nc_inq_var(file_handle, id, var->name, &var->type, &var->num_dims, var->dim_ids, &var->num_attrs)))
 		NC_ERR(retval);
 
-    printf("\tName: %s\t ID: %d\t netCDF_type: %s\t Num_dims: %d\t Num_attrs: %d\n", 
-    	name, id, ___nc_type(*type), *num_dims, *num_attrs);
+	var->id = id;
 
-    for (int i = 0; i < *num_dims; i++) {
-    	printf("\tDim_id[%d] = %d (%s)\n", i, dim_ids[i], dim_names[dim_ids[i]]);
+	for (int i = 0; i < var->num_dims; i++) {
+		printf("DIMENSION IDS: %d\n", var->dim_ids[i]);
+	}
+
+    printf("\tName: %s\t ID: %d\t netCDF_type: %s\t Num_dims: %d\t Num_attrs: %d\n", 
+    	var->name, id, ___nc_type(var->type), var->num_dims, var->num_attrs);
+
+    for (int i = 0; i < var->num_dims; i++) {
+    	printf("\tDim_id[%d] = %d (%s)\n", i, var->dim_ids[i], dims[var->dim_ids[i]].name);
     }
 
     // Display attribute data
-	___nc_inq_att(file_handle, id, *num_attrs);
+	___nc_inq_att(file_handle, id, var->num_attrs);
 }
 
-void ___nc_get_var_array(int file_handle, int id, char* name, nc_type type, int num_dims, int* dim_ids, size_t* dim_lengths, void** dest, size_t* var_size) {
-	size_t starts[num_dims];
-	size_t ends[num_dims];
-	size_t max_size = 1;
+void ___nc_get_var_array(int file_handle, int id, Variable* var, Dimension* dims) {
+	size_t starts[var->num_dims];
+	size_t ends[var->num_dims];
+	var->length = 1;
 
 	/* We want to grab all the data in each dimension from [0 - dim_length). Number of elements to read == max_size (hence multiplication) */
-	for (int i = 0; i < num_dims; i++) {
+	for (int i = 0; i < var->num_dims; i++) {
 		starts[i] 	= 0; 
-		ends[i] 	= dim_lengths[dim_ids[i]]; 
-		max_size 	*= dim_lengths[dim_ids[i]];
+		ends[i] 	= dims[var->dim_ids[i]].length; 
+		var->length 	*= dims[var->dim_ids[i]].length;
 	}
 
-	*dest 	= malloc(sizeof(void *) * max_size); // now we can allocate the space for our NC array
+	var->data 	= malloc(sizeof(void *) * var->length); // now we can allocate the space for our NC array
 
 	/* Make sure memory allocated */
-	if (starts == NULL || ends == NULL || dest == NULL)
+	if (starts == NULL || ends == NULL || var->data == NULL)
 		ERR(errno);
 
 	/* Use appropriate nc_get_vara() functions to access*/
-	switch(type) {
+	switch(var->type) {
 		case NC_FLOAT:
-			retval = nc_get_vara_float(file_handle, id, starts, ends, *dest);
+			retval = nc_get_vara_float(file_handle, id, starts, ends, (float *)var->data);
 			break;
 		case NC_DOUBLE:
-			retval = nc_get_vara_double(file_handle, id, starts, ends, *dest);
+			retval = nc_get_vara_double(file_handle, id, starts, ends,  (double *)var->data);
 			break;
 		default:
-			retval = nc_get_vara(file_handle, id, starts, ends, *dest);
+			retval = nc_get_vara(file_handle, id, starts, ends, var->data);
 	}
 
 	if (retval)	NC_ERR(retval);
 
-	printf("Populated array - ID: %d Variable: %s Type: %s Size: %lu, \n", id, name, ___nc_type(type), max_size);
+	printf("Populated array - ID: %d Variable: %s Type: %s Size: %lu, \n", var->id, var->name, ___nc_type(var->type), var->length);
 
+	for (int i = 0; i < 10; i++) {
+		printf("var[%d] = %f\n", i, ((float *) var->data)[i]);
+	}
 
 }
 
@@ -149,10 +176,10 @@ size_t ___access_nc_array(size_t time_idx, size_t lvl_idx, size_t lat_idx, size_
 	return (TIME_STRIDE * time_idx) + (LVL_STRIDE * lvl_idx) + (LAT_STRIDE * lat_idx) + lon_idx;
 }
 
-void temporal_interpolate(void* data, int num_dims, int* dim_ids, size_t* dim_lengths) {
+void temporal_interpolate(Variable* var, int num_dims, int* dim_ids, size_t* dim_lengths) {
 	// Assume 4D for now
 
-	float* dest = data;
+	float* dest = var->data;
 	// loop through all 1460 indices, linear interpolate (slope),
 	// for (size_t time = 0; time < dim_lengths[dim_ids[0]]; time++) {
 	for (size_t time = 0; time < 1; time++) {
@@ -184,14 +211,16 @@ void temporal_interpolate(void* data, int num_dims, int* dim_ids, size_t* dim_le
 	// write the file.
 }
 
-int ___test_access_nc_array(void* dest) {
-	float* destination = dest; // argument is void* since wasn't sure what type the data would be but it will usually be float*
+int ___test_access_nc_array(Variable* var) {
+	// float* destination = dest; // argument is void* since wasn't sure what type the data would be but it will usually be float*
+	float* destination = var->data;
+	printf("Var: %s, %d, %d, %d, %lu\n", var->name, var->id, var->num_dims, var->num_attrs, var->length);
 	for (size_t time_idx = 0; time_idx < 3; time_idx++) {
 		for (size_t lvl_idx = 0; lvl_idx < 3; lvl_idx++) {
 			for (size_t lat_idx = 0; lat_idx < 17; lat_idx++) {
 				for (size_t lon_idx = 0; lon_idx < 17; lon_idx++) {
 					size_t idx = ___access_nc_array(time_idx, lvl_idx, lat_idx, lon_idx);
-					printf("dest[%lu][%lu][%lu][%lu] = dest[%lu] = %f \n", 
+					printf("var[%lu][%lu][%lu][%lu] = var[%lu] = %f \n", 
 						time_idx, lvl_idx, lat_idx, lon_idx, idx, destination[idx]);
 				}
 			}
