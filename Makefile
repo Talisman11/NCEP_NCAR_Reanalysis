@@ -1,12 +1,13 @@
 OBJS = netCDF_driver.o ncwrapper.o
-CC = h4cc
+CC = h5cc
 DEBUG = -g
 NETCDF_FLAGS = -lm -lnetcdf
-LIBRARY_FILES = -Idriver_library
-CFLAGS = -Wall $(DEBUG)
+# LIBRARY_FILES = -Idriver_library
+CFLAGS += -Wall -O3
+NAME = program
 
 program : $(OBJS)
-	$(CC) $(DEBUG) $(NETCDF_FLAGS) $(LIBRARY_FILES) $(OBJS) -o program
+	$(CC) $(CFLAGS) $(DEBUG) $(OBJS) -o $(NAME) $(NETCDF_FLAGS) 
 clean:
 	rm -f *.o *~ program
 

@@ -1,19 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <netcdf.h>
 
 #include "ncwrapper.h"
-
-
-
-
-#define NC_ERR(err_msg) { printf("File: %s Line: %d - NetCDF Error: %s\n", __FILE__, __LINE__, nc_strerror(err_msg)); exit(EXIT_FAILURE); }
-#define ERR(err_no) { printf("File: %s Line: %d - C Error: %s\n", __FILE__, __LINE__, strerror(err_no)); exit(EXIT_FAILURE); }
-
-#define ATTR_PAD 30
-#define TEMPORAL_GRANULARITY 15 // new "sample rate" in minutes of output reanalysis file. 
-#define NUM_GRAINS (360 / TEMPORAL_GRANULARITY)
 
 extern int retval;
 
@@ -57,13 +48,48 @@ void ___nc_open(char* file_name, int* file_handle) {
     	NC_ERR(retval);
 }
 
+/* TODO: add NC_NOCLOBBER once program is more finished so written files are not overwritten on accident */
 void ___nc_create(char* file_name, int* file_handle) {
-	// if ((retval = nc_create(file_name, NC_NOCLOBBER|NC_SHARE, file_handle)))
-	if ((retval = nc_create(file_name, NC_SHARE, file_handle)))
+	/* Create netCDF4-4 classic model to match original NCAR/NCEP format of .nc files */
+	if ((retval = nc_create(file_name, NC_SHARE|NC_NETCDF4|NC_CLASSIC_MODEL, file_handle)))
+		NC_ERR(retval);
+
+	/* Has no effect? */
+	if ((retval = nc_set_fill(*file_handle, NC_NOFILL, NULL)))
 		NC_ERR(retval);
 }
 
-// void ___nc_inq_dim(int file_handle, int id, char* name, size_t* length) {
+void ___nc_def_dim(int file_handle, Dimension dim) {
+	printf("Name: %s Length: %lu\n", dim.name, dim.length);
+	if ((retval = nc_def_dim(file_handle, dim.name, dim.length, &dim.id)))
+		NC_ERR(retval);
+}
+
+void ___nc_def_var(int file_handle, Variable var) {
+	if ((retval = nc_def_var(file_handle, var.name, var.type, var.num_dims, var.dim_ids, &var.id)))
+		NC_ERR(retval);
+
+	/* Set NO_FILL = True */
+	if ((retval = nc_def_var_fill(file_handle, var.id, 1, NULL)))
+		NC_ERR(retval);
+}
+
+void ___nc_put_var_array(int file_handle, Variable var) {
+	switch(var.type) {
+		case NC_FLOAT:
+			retval = nc_put_var_float(file_handle, var.id, var.data);
+			break;
+		case NC_DOUBLE:
+			retval = nc_put_var_double(file_handle, var.id, var.data);
+			break;
+		default:
+			retval = nc_put_var(file_handle, var.id, var.data);
+	}
+
+	if (retval) NC_ERR(retval);
+
+}
+
 void ___nc_inq_dim(int file_handle, int id, Dimension* dim) {
 	if ((retval = nc_inq_dim(file_handle, id, dim->name, &dim->length))) 
 		NC_ERR(retval);
@@ -71,6 +97,7 @@ void ___nc_inq_dim(int file_handle, int id, Dimension* dim) {
 	dim->id = id;
     printf("\tName: %s\t ID: %d\t Length: %lu\n", dim->name, dim->id, dim->length);
 }
+
 
 void ___nc_inq_att(int file_handle, int var_id, int num_attrs) {
 	char att_name[NC_MAX_NAME + 1];
@@ -95,31 +122,11 @@ void ___nc_inq_att(int file_handle, int var_id, int num_attrs) {
 	
 }
 
-// void ___nc_inq_var(int file_handle, int id, char* name, nc_type* type, int* num_dims, int* dim_ids, int* num_attrs, char** dim_names) {
-// 	if((retval = nc_inq_var(file_handle, id, name, type, num_dims, dim_ids, num_attrs)))
-// 		NC_ERR(retval);
-
-//     printf("\tName: %s\t ID: %d\t netCDF_type: %s\t Num_dims: %d\t Num_attrs: %d\n", 
-//     	name, id, ___nc_type(*type), *num_dims, *num_attrs);
-
-//     for (int i = 0; i < *num_dims; i++) {
-//     	printf("\tDim_id[%d] = %d (%s)\n", i, dim_ids[i], dim_names[dim_ids[i]]);
-//     }
-
-//     // Display attribute data
-// 	___nc_inq_att(file_handle, id, *num_attrs);
-// }
-
-
 void ___nc_inq_var(int file_handle, int id, Variable* var, Dimension* dims) {
 	if((retval = nc_inq_var(file_handle, id, var->name, &var->type, &var->num_dims, var->dim_ids, &var->num_attrs)))
 		NC_ERR(retval);
 
 	var->id = id;
-
-	for (int i = 0; i < var->num_dims; i++) {
-		printf("DIMENSION IDS: %d\n", var->dim_ids[i]);
-	}
 
     printf("\tName: %s\t ID: %d\t netCDF_type: %s\t Num_dims: %d\t Num_attrs: %d\n", 
     	var->name, id, ___nc_type(var->type), var->num_dims, var->num_attrs);
@@ -134,86 +141,137 @@ void ___nc_inq_var(int file_handle, int id, Variable* var, Dimension* dims) {
 
 void ___nc_get_var_array(int file_handle, int id, Variable* var, Dimension* dims) {
 	size_t starts[var->num_dims];
-	size_t ends[var->num_dims];
+	size_t counts[var->num_dims];
 	var->length = 1;
 
 	/* We want to grab all the data in each dimension from [0 - dim_length). Number of elements to read == max_size (hence multiplication) */
 	for (int i = 0; i < var->num_dims; i++) {
 		starts[i] 	= 0; 
-		ends[i] 	= dims[var->dim_ids[i]].length; 
+		counts[i] 	= dims[var->dim_ids[i]].length; 
 		var->length 	*= dims[var->dim_ids[i]].length;
+		printf("setting length to : %lu\n", var->length);
 	}
 
-	var->data 	= malloc(sizeof(void *) * var->length); // now we can allocate the space for our NC array
-
-	/* Make sure memory allocated */
-	if (starts == NULL || ends == NULL || var->data == NULL)
-		ERR(errno);
 
 	/* Use appropriate nc_get_vara() functions to access*/
 	switch(var->type) {
 		case NC_FLOAT:
-			retval = nc_get_vara_float(file_handle, id, starts, ends, (float *)var->data);
+			var->data = malloc(sizeof(float) * var->length);
+			retval = nc_get_vara_float(file_handle, id, starts, counts, (float *) var->data);
 			break;
-		case NC_DOUBLE:
-			retval = nc_get_vara_double(file_handle, id, starts, ends,  (double *)var->data);
-			break;
-		default:
-			retval = nc_get_vara(file_handle, id, starts, ends, var->data);
+		default: // likely NC_DOUBLE. If not NC_DOUBLE, then some other type.. but never happened yet
+			var->data = malloc(sizeof(double) * var->length);
+			retval = nc_get_vara_double(file_handle, id, starts, counts,  (double *) var->data);
 	}
 
 	if (retval)	NC_ERR(retval);
 
 	printf("Populated array - ID: %d Variable: %s Type: %s Size: %lu, \n", var->id, var->name, ___nc_type(var->type), var->length);
+}
 
-	for (int i = 0; i < 10; i++) {
-		printf("var[%d] = %f\n", i, ((float *) var->data)[i]);
+void skeleton_variable_fill(int copy, int num_vars, Variable* vars, Dimension time_interp) {
+	double* time;
+	for (int i = 0; i < num_vars - 1; i++) {
+		switch (vars[i].type) {
+			case NC_FLOAT:
+				nc_put_var_float(copy, vars[i].id, vars[i].data);
+				break;
+			default:
+				// TIME variable
+				// printf("NAME: %s id: %d length: %lu\n", vars[i].name, vars[i].id, vars[i].length);
+				time = vars[i].data;
+				// for (int i = 0; i < vars[i].length; i++) {
+				// 	printf("wtf\n");	
+				// }
+
+
+				for (size_t j = 0; j < time_interp.length; j++) {
+					// time[i] = time[0] + i*TEMPORAL_GRANULARITY;
+					time[j] = 9999.999;
+					// printf("time[%lu] = %f\n", i, time[i]);
+					printf("time[%lu]\n", j);
+
+				}
+				nc_put_var_double(copy, vars[i].id, vars[i].data);
+		}
 	}
-
 }
 
 size_t ___access_nc_array(size_t time_idx, size_t lvl_idx, size_t lat_idx, size_t lon_idx) {
 	return (TIME_STRIDE * time_idx) + (LVL_STRIDE * lvl_idx) + (LAT_STRIDE * lat_idx) + lon_idx;
 }
 
-void temporal_interpolate(Variable* var, int num_dims, int* dim_ids, size_t* dim_lengths) {
-	// Assume 4D for now
 
-	float* dest = var->data;
-	// loop through all 1460 indices, linear interpolate (slope),
-	// for (size_t time = 0; time < dim_lengths[dim_ids[0]]; time++) {
-	for (size_t time = 0; time < 1; time++) {
-		for (size_t grain = 0; grain < NUM_GRAINS; grain++) {
-			for (size_t lvl = 0; lvl < dim_lengths[dim_ids[1]]; lvl++) {
-				for (size_t lat = 0; lat < dim_lengths[dim_ids[2]]; lat++) {
-					for (size_t lon = 0; lon < dim_lengths[dim_ids[3]]; lon++) {
-						size_t x_idx = ___access_nc_array(time, lvl, lat, lon);
-						size_t y_idx = ___access_nc_array(time + 1, lvl, lat, lon);
+void temporal_interpolate(int copy, Variable* orig, Variable* interp, Dimension* dims) {
+	size_t time, grain, lvl, lat, lon, x_idx, y_idx, interp_idx;
 
-						float m = dest[y_idx] - dest[x_idx];
-						float interp = m*((float) grain / (float) NUM_GRAINS) + dest[x_idx];
+	size_t starts[interp->num_dims];
+	size_t counts[interp->num_dims];
 
-						printf("[%lu][%lu][%lu][%lu][%lu] \t data[%lu] = %f \t interp = %f \t data[%lu] = %f \n",
-							time, lvl, lat, lon, grain, x_idx, (float) dest[x_idx], interp, y_idx, (float) dest[y_idx]);
+	// Debugging code
+	// printf("var: name: %s id: %d num_dims %d length %lu\n", orig->name, orig->id, orig->num_dims, orig->length);
+	// for (int i = 0; i < orig->num_dims; i++) {
+	// 	printf("dim_ids[%d] = %d\n", i, orig->dim_ids[i]);
+	// }
+	// for (int i = 0; i < 4; i++) {
+	// 	printf("dim name: %s id: %d length: %lu\n", dims[i].name, dims[i].id, dims[i].length);
+	// }
+
+	// all dimensions run from [0, dim_length) except for Time, which is [0, 1)
+	for (int i = 0; i < interp->num_dims; i++) {
+		starts[i] = 0; 
+		counts[i] = dims[interp->dim_ids[i]].length;
+	}
+	counts[0] = 1; // Time dimension we only want to do ONE count at a time
+
+
+
+
+
+	float* src = orig->data;
+	float* dst = (float *) interp->data;
+
+	// for (size_t time = 0; time < dims[orig->dim_ids[0]].length; time++) {
+	for (time = 0; time < 2; time++) {
+		for (grain = 0; grain < NUM_GRAINS; grain++) {
+			for (lvl = 0; lvl < dims[orig->dim_ids[1]].length; lvl++) {
+				for (lat = 0; lat < dims[orig->dim_ids[2]].length; lat++) {
+					for (lon = 0; lon < dims[orig->dim_ids[3]].length; lon++) {
+						x_idx = ___access_nc_array(time, lvl, lat, lon);
+						y_idx = ___access_nc_array(time + 1, lvl, lat, lon);
+
+						interp_idx = ___access_nc_array(0, lvl, lat, lon); // only doing one cube at a time. Each new grain / time replaces the current cube;
+
+						float m = src[y_idx] - src[x_idx];
+						dst[interp_idx] = m*((float) grain / (float) NUM_GRAINS) + src[x_idx];
+
+						/* Print out debug level each grain */
+						if (lvl == 0 && lat == 0 && lon == 0) {
+							printf("[%lu][%lu][%lu][%lu][%lu] \t data[%lu] = %f \t interp[%lu] = %f \t data[%lu] = %f \n",
+							time, grain, lvl, lat, lon, x_idx, src[x_idx], interp_idx, dst[interp_idx], y_idx, src[y_idx]);	
+						}
 					}
 				}
 			}
+
+			starts[0] = NUM_GRAINS * time + grain;
+
+			if ((retval = nc_put_vara_float(copy, interp->id, starts, counts, dst)))
+				NC_ERR(retval);
+
+			// printf("starts: %lu %lu %lu %lu ends: %lu %lu %lu %lu\n", starts[0], starts[1], starts[2], starts[3],
+			// 	ends[0], ends[1], ends[2], ends[3]);
 		}
 	}
-
-
-	// need to use nc_put_var to write data
-
-	// make a pseudo copy: open original in read-only mode, and then read its metadata to create a skeleton copy, where the new data 
-	// will be written.
-
-
-	// write the file.
 }
 
-int ___test_access_nc_array(Variable* var) {
-	// float* destination = dest; // argument is void* since wasn't sure what type the data would be but it will usually be float*
+size_t time_dimension_adjust(size_t original_length) {
+	return original_length * NUM_GRAINS;
+}
+
+void ___test_access_nc_array(Variable* var) {
 	float* destination = var->data;
+
 	printf("Var: %s, %d, %d, %d, %lu\n", var->name, var->id, var->num_dims, var->num_attrs, var->length);
 	for (size_t time_idx = 0; time_idx < 3; time_idx++) {
 		for (size_t lvl_idx = 0; lvl_idx < 3; lvl_idx++) {
@@ -226,6 +284,24 @@ int ___test_access_nc_array(Variable* var) {
 			}
 		}
 	}   
+}
 
-	return 0;
+void clean_up(int num_vars, Variable* vars, Variable interp, Dimension* dims) {
+    for (int i = 0; i < num_vars; i++) {
+		free(vars[i].data);
+	}
+	free(vars);
+	free(dims);
+
+	free(interp.data);
+}
+void timer_start(clock_t* start) {
+	*start = clock();
+}
+
+void timer_end(clock_t* start, clock_t* end) {
+	*end = clock() - *start;
+
+	int msec = *end * 1000 / CLOCKS_PER_SEC;
+	printf("Time: %d seconds %d milliseconds", msec/1000, msec%1000);
 }
