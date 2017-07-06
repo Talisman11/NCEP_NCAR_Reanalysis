@@ -71,10 +71,24 @@ void ___nc_def_dim(int file_handle, Dimension dim) {
 void ___nc_def_var(int file_handle, Variable var) {
 	if ((retval = nc_def_var(file_handle, var.name, var.type, var.num_dims, var.dim_ids, &var.id)))
 		NC_ERR(retval);
+}
 
-	/* Set NO_FILL = True */
-	if ((retval = nc_def_var_fill(file_handle, var.id, 1, NULL)))
+void ___nc_def_var_chunking(int ncid, int varid, size_t *chunksizesp) {
+	if ((retval = nc_def_var_chunking(ncid, varid, NC_CHUNKED, chunksizesp)))
 		NC_ERR(retval);
+}
+
+void ___nc_def_var_deflate(int ncid, int varid) {
+	/* Variable deflation with shuffle = 1, deflate = 1, at level 2 */
+	if ((retval = nc_def_var_deflate(ncid, varid, 1, 1, 2))) 
+		NC_ERR(retval)
+}
+
+void ___variable_compression(int ncid, int timeid, size_t* time_chunks, int specialid, size_t* special_chunks) {
+	___nc_def_var_chunking(ncid, timeid, time_chunks);
+	___nc_def_var_chunking(ncid, specialid, special_chunks);
+
+	___nc_def_var_deflate(ncid, specialid);
 }
 
 void ___nc_put_var_array(int file_handle, Variable var) {

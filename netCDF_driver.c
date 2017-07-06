@@ -8,7 +8,8 @@
 #include "ncwrapper.h"
 
 #define FILE_NAME "./ncar_files/pressure/air.2001.nc"
-#define COPY_NAME "./ncar_files/pressure/air.2001.copy.nc"
+#define COPY_NAME "./ncar_files/pressure/air.2001.copydeflateall.nc"
+// #define TEST_NAME "./ncar_files/pressure/air.2001.copytest.nc"
 #define TYPE(type) { return type; }
 
 /* Used by main() and wrapper functions */
@@ -23,32 +24,26 @@ size_t LVL_STRIDE;
 size_t LAT_STRIDE;
 
 // const char argv[] = {"cp"}
-
+const size_t SPECIAL_CHUNKS[] = {1, 1, 73, 144};
+const size_t TIME_CHUNK[] = {1};
 
 int main() {
+	/* Declare local variables */
 	clock_t start, end;
-	pid_t copier;
 
-    int file, copy, copy_status; // nc_open
+    int file, copy; // nc_open
 
     int num_dims, num_vars, num_global_attrs, unlimdimidp; // nc_inq
-
-    VAR_ID_TIME = VAR_ID_LVL = VAR_ID_LAT = VAR_ID_LON = VAR_ID_SPECIAL = -1;
-	DIM_ID_TIME = DIM_ID_LVL = DIM_ID_LAT = DIM_ID_LON = -1;
 
     Variable *vars, var_interp;
     Dimension *dims, time_interp;
 
+    /* Initialize our global variables */
+    VAR_ID_TIME = VAR_ID_LVL = VAR_ID_LAT = VAR_ID_LON = VAR_ID_SPECIAL = -1;
+	DIM_ID_TIME = DIM_ID_LVL = DIM_ID_LAT = DIM_ID_LON = -1;
+
+
 	timer_start(&start);
-
-	// copier = fork();
-	// if (copier == 0) { // child
-	// 	execvp()
-	// }
-	
-	// waitpid(copier, &copy_status, 0);
-
-	// exit(0);
 
     // char cwd[1024];
     // getcwd(cwd, sizeof(cwd));
@@ -103,6 +98,10 @@ int main() {
 
 	/**** Set up and perform temporal interpolation ****/
     ___nc_create(COPY_NAME, &copy);
+    // nc_open(TEST_NAME, NC_WRITE, &copy);
+    // nc_redef(copy);
+
+    // printf("copytest opened\n");
 
     // var_interp = malloc(sizeof(Variable)); // Make a copy of the desired Var. MUST CHANGE *data pointer!
     // time_interp = malloc(sizeof(Dimension)); // Make a copy of the Time Dimension. No allocations to change
@@ -125,6 +124,10 @@ int main() {
     for (int i = 0; i < num_vars; i++) {
     	___nc_def_var(copy, vars[i]);
     }
+
+    printf("Chunk sizes: %lu %lu %lu %lu\n", SPECIAL_CHUNKS[0], SPECIAL_CHUNKS[1], SPECIAL_CHUNKS[2], SPECIAL_CHUNKS[3]);
+
+    ___variable_compression(copy, VAR_ID_TIME, TIME_CHUNK, VAR_ID_SPECIAL, SPECIAL_CHUNKS);
 
     /* Declare we are done defining dims and vars */
     nc_enddef(copy);
