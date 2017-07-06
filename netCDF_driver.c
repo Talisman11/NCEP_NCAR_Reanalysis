@@ -9,27 +9,46 @@
 
 #define FILE_NAME "./ncar_files/pressure/air.2001.nc"
 #define COPY_NAME "./ncar_files/pressure/air.2001.copy.nc"
+#define TYPE(type) { return type; }
 
 /* Used by main() and wrapper functions */
 int retval;
+
+int VAR_ID_TIME, VAR_ID_LVL, VAR_ID_LAT, VAR_ID_LON, VAR_ID_SPECIAL;
+int DIM_ID_TIME, DIM_ID_LVL, DIM_ID_LAT, DIM_ID_LON;
 
 /* Stride lengths for array access */
 size_t TIME_STRIDE;
 size_t LVL_STRIDE;
 size_t LAT_STRIDE;
 
-#define TYPE(type) { return type; }
+// const char argv[] = {"cp"}
+
 
 int main() {
 	clock_t start, end;
-	timer_start(&start);
+	pid_t copier;
 
-    int file, copy; // nc_open
+    int file, copy, copy_status; // nc_open
 
     int num_dims, num_vars, num_global_attrs, unlimdimidp; // nc_inq
 
+    VAR_ID_TIME = VAR_ID_LVL = VAR_ID_LAT = VAR_ID_LON = VAR_ID_SPECIAL = -1;
+	DIM_ID_TIME = DIM_ID_LVL = DIM_ID_LAT = DIM_ID_LON = -1;
+
     Variable *vars, var_interp;
     Dimension *dims, time_interp;
+
+	timer_start(&start);
+
+	// copier = fork();
+	// if (copier == 0) { // child
+	// 	execvp()
+	// }
+	
+	// waitpid(copier, &copy_status, 0);
+
+	// exit(0);
 
     // char cwd[1024];
     // getcwd(cwd, sizeof(cwd));
@@ -88,8 +107,8 @@ int main() {
     // var_interp = malloc(sizeof(Variable)); // Make a copy of the desired Var. MUST CHANGE *data pointer!
     // time_interp = malloc(sizeof(Dimension)); // Make a copy of the Time Dimension. No allocations to change
 
-    memcpy(&var_interp, &vars[4], sizeof(Variable));
-    memcpy(&time_interp, &dims[3], sizeof(Dimension));
+    memcpy(&var_interp, &vars[VAR_ID_SPECIAL], sizeof(Variable));
+    memcpy(&time_interp, &dims[DIM_ID_TIME], sizeof(Dimension));
 
     var_interp.data = malloc(sizeof(float) * (TIME_STRIDE));
     var_interp.length *= NUM_GRAINS; // (var_orig_length) * (NUM_GRAINS) length
@@ -110,9 +129,9 @@ int main() {
     /* Declare we are done defining dims and vars */
     nc_enddef(copy);
 
-    // skeleton_variable_fill(copy, num_vars, vars, time_interp);
+    skeleton_variable_fill(copy, num_vars, vars, time_interp);
 
-	temporal_interpolate(copy, &vars[4], &var_interp, dims);
+	temporal_interpolate(copy, &vars[VAR_ID_SPECIAL], &var_interp, dims);
 
 	clean_up(num_vars, vars, var_interp, dims);	
 

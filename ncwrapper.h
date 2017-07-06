@@ -9,7 +9,6 @@
 
 #define NC_ERR(err_msg) { printf("File: %s Line: %d - NetCDF Error: %s\n", __FILE__, __LINE__, nc_strerror(err_msg)); exit(EXIT_FAILURE); }
 #define ERR(err_no) { printf("File: %s Line: %d - C Error: %s\n", __FILE__, __LINE__, strerror(err_no)); exit(EXIT_FAILURE); }
-
 typedef struct Variable {
 	char name[NC_MAX_NAME + 1];		// Variable name
 	int id;							// Variable ID
@@ -80,5 +79,7 @@ size_t time_dimension_adjust(size_t original_length);
 
 void timer_start(clock_t* start);
 void timer_end(clock_t* start, clock_t* end);
+
+int str_eq(char* test, const char* target);
 
 #endif

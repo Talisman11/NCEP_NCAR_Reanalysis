@@ -12,6 +12,10 @@ extern size_t TIME_STRIDE;
 extern size_t LVL_STRIDE;
 extern size_t LAT_STRIDE;
 
+extern int VAR_ID_TIME, VAR_ID_LVL, VAR_ID_LAT, VAR_ID_LON, VAR_ID_SPECIAL;
+extern int DIM_ID_TIME, DIM_ID_LVL, DIM_ID_LAT, DIM_ID_LON;
+
+
 char*  ___nc_type(int nc_type) {
 	switch (nc_type) {
 		case NC_BYTE:
@@ -60,7 +64,6 @@ void ___nc_create(char* file_name, int* file_handle) {
 }
 
 void ___nc_def_dim(int file_handle, Dimension dim) {
-	printf("Name: %s Length: %lu\n", dim.name, dim.length);
 	if ((retval = nc_def_dim(file_handle, dim.name, dim.length, &dim.id)))
 		NC_ERR(retval);
 }
@@ -95,6 +98,15 @@ void ___nc_inq_dim(int file_handle, int id, Dimension* dim) {
 		NC_ERR(retval);
 
 	dim->id = id;
+	if (str_eq(dim->name, "time")) 
+		DIM_ID_TIME = id;
+	if (str_eq(dim->name, "level"))
+		DIM_ID_LVL = id;
+	if (str_eq(dim->name, "lat"))
+		DIM_ID_LAT = id;
+	if (str_eq(dim->name, "lon"))
+		DIM_ID_LON = id;
+
     printf("\tName: %s\t ID: %d\t Length: %lu\n", dim->name, dim->id, dim->length);
 }
 
@@ -126,7 +138,18 @@ void ___nc_inq_var(int file_handle, int id, Variable* var, Dimension* dims) {
 	if((retval = nc_inq_var(file_handle, id, var->name, &var->type, &var->num_dims, var->dim_ids, &var->num_attrs)))
 		NC_ERR(retval);
 
+	// probably needs brackets lol
 	var->id = id;
+	if (str_eq(var->name, "time"))
+		VAR_ID_TIME = id;
+	else if (str_eq(var->name, "level"))
+		VAR_ID_LVL = id;
+	else if (str_eq(var->name, "lat"))
+		VAR_ID_LAT = id;
+	else if (str_eq(var->name, "lon"))
+		VAR_ID_LON = id;
+	else
+		VAR_ID_SPECIAL = id;
 
     printf("\tName: %s\t ID: %d\t netCDF_type: %s\t Num_dims: %d\t Num_attrs: %d\n", 
     	var->name, id, ___nc_type(var->type), var->num_dims, var->num_attrs);
@@ -170,31 +193,28 @@ void ___nc_get_var_array(int file_handle, int id, Variable* var, Dimension* dims
 }
 
 void skeleton_variable_fill(int copy, int num_vars, Variable* vars, Dimension time_interp) {
-	double* time;
-	for (int i = 0; i < num_vars - 1; i++) {
-		switch (vars[i].type) {
-			case NC_FLOAT:
-				nc_put_var_float(copy, vars[i].id, vars[i].data);
-				break;
-			default:
-				// TIME variable
-				// printf("NAME: %s id: %d length: %lu\n", vars[i].name, vars[i].id, vars[i].length);
-				time = vars[i].data;
-				// for (int i = 0; i < vars[i].length; i++) {
-				// 	printf("wtf\n");	
-				// }
 
-
-				for (size_t j = 0; j < time_interp.length; j++) {
-					// time[i] = time[0] + i*TEMPORAL_GRANULARITY;
-					time[j] = 9999.999;
-					// printf("time[%lu] = %f\n", i, time[i]);
-					printf("time[%lu]\n", j);
-
-				}
-				nc_put_var_double(copy, vars[i].id, vars[i].data);
+	for (int i = 0; i < num_vars; i++) {
+		if (i != VAR_ID_TIME && i != VAR_ID_SPECIAL) {
+			nc_put_var_float(copy, vars[i].id, vars[i].data);
 		}
 	}
+
+	float min_elapsed, decimal_conversion;
+	double* time_orig = vars[VAR_ID_TIME].data;
+	double* time_new = malloc(sizeof(double) * time_interp.length);
+	for (size_t i = 0; i < time_interp.length; i++) {
+
+		// divide minutes by 360 (6 hours), then multiply by decimal increment (6.0 for 6 hours in time dimension in file)
+		min_elapsed = (i % NUM_GRAINS) * TEMPORAL_GRANULARITY;
+		decimal_conversion = DAILY_4X * (min_elapsed / 360.0); 
+		time_new[i] = time_orig[i / NUM_GRAINS] +  decimal_conversion;
+		// printf("time_orig[%lu / %d] = %f. time_new[%lu] = %f\n", i, NUM_GRAINS, time_orig[i / NUM_GRAINS], i, time_new[i]);
+	}
+
+	nc_put_var_double(copy, VAR_ID_TIME, time_new);
+
+
 }
 
 size_t ___access_nc_array(size_t time_idx, size_t lvl_idx, size_t lat_idx, size_t lon_idx) {
@@ -204,9 +224,9 @@ size_t ___access_nc_array(size_t time_idx, size_t lvl_idx, size_t lat_idx, size_
 
 void temporal_interpolate(int copy, Variable* orig, Variable* interp, Dimension* dims) {
 	size_t time, grain, lvl, lat, lon, x_idx, y_idx, interp_idx;
-
 	size_t starts[interp->num_dims];
 	size_t counts[interp->num_dims];
+	float m; // for slope
 
 	// Debugging code
 	// printf("var: name: %s id: %d num_dims %d length %lu\n", orig->name, orig->id, orig->num_dims, orig->length);
@@ -231,8 +251,8 @@ void temporal_interpolate(int copy, Variable* orig, Variable* interp, Dimension*
 	float* src = orig->data;
 	float* dst = (float *) interp->data;
 
-	// for (size_t time = 0; time < dims[orig->dim_ids[0]].length; time++) {
-	for (time = 0; time < 2; time++) {
+	// for (time = 0; time < 100; time++) {
+	for (time = 0; time < dims[orig->dim_ids[0]].length; time++) {
 		for (grain = 0; grain < NUM_GRAINS; grain++) {
 			for (lvl = 0; lvl < dims[orig->dim_ids[1]].length; lvl++) {
 				for (lat = 0; lat < dims[orig->dim_ids[2]].length; lat++) {
@@ -242,14 +262,14 @@ void temporal_interpolate(int copy, Variable* orig, Variable* interp, Dimension*
 
 						interp_idx = ___access_nc_array(0, lvl, lat, lon); // only doing one cube at a time. Each new grain / time replaces the current cube;
 
-						float m = src[y_idx] - src[x_idx];
+						m = src[y_idx] - src[x_idx];
 						dst[interp_idx] = m*((float) grain / (float) NUM_GRAINS) + src[x_idx];
 
 						/* Print out debug level each grain */
-						if (lvl == 0 && lat == 0 && lon == 0) {
-							printf("[%lu][%lu][%lu][%lu][%lu] \t data[%lu] = %f \t interp[%lu] = %f \t data[%lu] = %f \n",
-							time, grain, lvl, lat, lon, x_idx, src[x_idx], interp_idx, dst[interp_idx], y_idx, src[y_idx]);	
-						}
+						// if (grain == 0 && lvl == 0 && lat == 0 && lon == 0) {
+						// 	printf("[%lu][%lu][%lu][%lu][%lu] \t data[%lu] = %f \t interp[%lu] = %f \t data[%lu] = %f \n",
+						// 	time, grain, lvl, lat, lon, x_idx, src[x_idx], interp_idx, dst[interp_idx], y_idx, src[y_idx]);	
+						// }
 					}
 				}
 			}
@@ -295,6 +315,8 @@ void clean_up(int num_vars, Variable* vars, Variable interp, Dimension* dims) {
 
 	free(interp.data);
 }
+
+
 void timer_start(clock_t* start) {
 	*start = clock();
 }
@@ -304,4 +326,8 @@ void timer_end(clock_t* start, clock_t* end) {
 
 	int msec = *end * 1000 / CLOCKS_PER_SEC;
 	printf("Time: %d seconds %d milliseconds", msec/1000, msec%1000);
+}
+
+int str_eq(char* test, const char* target) {
+	return strcmp(test, target) == 0;
 }
