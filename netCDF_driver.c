@@ -8,15 +8,12 @@
 #include "ncwrapper.h"
 
 #define FILE_NAME "./ncar_files/pressure/air.2001.nc"
-#define COPY_NAME "./ncar_files/pressure/air.2001.copydeflateall.nc"
-// #define TEST_NAME "./ncar_files/pressure/air.2001.copytest.nc"
-#define TYPE(type) { return type; }
-
-/* Used by main() and wrapper functions */
-int retval;
+#define COPY_NAME "./ncar_files/pressure/air.2001.copy.nc"
 
 int VAR_ID_TIME, VAR_ID_LVL, VAR_ID_LAT, VAR_ID_LON, VAR_ID_SPECIAL;
 int DIM_ID_TIME, DIM_ID_LVL, DIM_ID_LAT, DIM_ID_LON;
+
+int retval;
 
 /* Stride lengths for array access */
 size_t TIME_STRIDE;
@@ -29,8 +26,6 @@ const size_t TIME_CHUNK[] = {1};
 
 int main() {
 	/* Declare local variables */
-	clock_t start, end;
-
     int file, copy; // nc_open
 
     int num_dims, num_vars, num_global_attrs, unlimdimidp; // nc_inq
@@ -41,9 +36,6 @@ int main() {
     /* Initialize our global variables */
     VAR_ID_TIME = VAR_ID_LVL = VAR_ID_LAT = VAR_ID_LON = VAR_ID_SPECIAL = -1;
 	DIM_ID_TIME = DIM_ID_LVL = DIM_ID_LAT = DIM_ID_LON = -1;
-
-
-	timer_start(&start);
 
     // char cwd[1024];
     // getcwd(cwd, sizeof(cwd));
@@ -74,8 +66,6 @@ int main() {
     	___nc_inq_var(file, i, &vars[i], dims);
     }
 
-
-
     /* Populate Variable struct arrays */
     for (int i = 0; i < num_vars; i++) {
     	___nc_get_var_array(file, i, &vars[i], dims);
@@ -92,19 +82,8 @@ int main() {
 	LVL_STRIDE 	= dims[0].length * dims[1].length;
 	LAT_STRIDE 	= dims[0].length;
 
-	/* Can start accessing wherever in the 1D array now */
-	// ___test_access_nc_array(&vars[4]);
-
-
 	/**** Set up and perform temporal interpolation ****/
     ___nc_create(COPY_NAME, &copy);
-    // nc_open(TEST_NAME, NC_WRITE, &copy);
-    // nc_redef(copy);
-
-    // printf("copytest opened\n");
-
-    // var_interp = malloc(sizeof(Variable)); // Make a copy of the desired Var. MUST CHANGE *data pointer!
-    // time_interp = malloc(sizeof(Dimension)); // Make a copy of the Time Dimension. No allocations to change
 
     memcpy(&var_interp, &vars[VAR_ID_SPECIAL], sizeof(Variable));
     memcpy(&time_interp, &dims[DIM_ID_TIME], sizeof(Dimension));
@@ -113,6 +92,7 @@ int main() {
     var_interp.length *= NUM_GRAINS; // (var_orig_length) * (NUM_GRAINS) length
     time_interp.length *= NUM_GRAINS; // (time_orig_length) * (NUM_GRAINS) length
 
+    /* Define dimensions based off the input, except for Time (length depends on grains specified) */
     for (int i = 0; i < num_dims; i++) {
     	if (strcmp(dims[i].name, "time") == 0) {
     		___nc_def_dim(copy, time_interp);
@@ -121,18 +101,20 @@ int main() {
     	}
     }
 
+    /* Define variables based off input. All the same, since just dimension length changes */
     for (int i = 0; i < num_vars; i++) {
     	___nc_def_var(copy, vars[i]);
     }
 
-    printf("Chunk sizes: %lu %lu %lu %lu\n", SPECIAL_CHUNKS[0], SPECIAL_CHUNKS[1], SPECIAL_CHUNKS[2], SPECIAL_CHUNKS[3]);
-
-    ___variable_compression(copy, VAR_ID_TIME, TIME_CHUNK, VAR_ID_SPECIAL, SPECIAL_CHUNKS);
+    /* Add chunking for time and special variable, and shuffle and deflate for the special */
+    variable_compression(copy, VAR_ID_TIME, TIME_CHUNK, VAR_ID_SPECIAL, SPECIAL_CHUNKS);
 
     /* Declare we are done defining dims and vars */
     nc_enddef(copy);
 
+    /* Fill out values for all variables asides from the special */
     skeleton_variable_fill(copy, num_vars, vars, time_interp);
+
 
 	temporal_interpolate(copy, &vars[VAR_ID_SPECIAL], &var_interp, dims);
 
@@ -140,8 +122,6 @@ int main() {
 
     nc_close(file);
     nc_close(copy); // There is a memory leak of 64B from creating and closing the copy. NetCDF problems...
-
-	timer_end(&start, &end);
 
     return 0; 
 }

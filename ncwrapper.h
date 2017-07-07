@@ -6,10 +6,11 @@
 #define TEMPORAL_GRANULARITY 15 // new "sample rate" in minutes of output reanalysis file. 
 #define NUM_GRAINS (360 / TEMPORAL_GRANULARITY)
 #define DAILY_4X 6.0 // hours between intervals in a day
-#define ARRAY {1, 2, 3 ,4}
 
 #define NC_ERR(err_msg) { printf("File: %s Line: %d - NetCDF Error: %s\n", __FILE__, __LINE__, nc_strerror(err_msg)); exit(EXIT_FAILURE); }
 #define ERR(err_no) { printf("File: %s Line: %d - C Error: %s\n", __FILE__, __LINE__, strerror(err_no)); exit(EXIT_FAILURE); }
+
+/* Custom struct based off of NetCDF Variable. Added an internal length parameter */
 typedef struct Variable {
 	char name[NC_MAX_NAME + 1];		// Variable name
 	int id;							// Variable ID
@@ -22,29 +23,42 @@ typedef struct Variable {
 	void* data;						// Corresponding array of aforementioned length
 } Variable;
 
+/* Custom struct based off of NetCDF Dimension. No additions */
 typedef struct Dimension {
 	char name[NC_MAX_NAME + 1];		// Dimension name
 	int id;							// Dimension ID. Referenced by Variables
 	size_t length;					// Dimension length. Determines size of associated Variables
-
 } Dimension;
 
 /* Determine type of nc_type variable */
 char*  ___nc_type(int nc_type);
 
-void ___nc_open(char* file_name, int* file_handle);
+/* Opens NetCDF file in read-only mode*/
+void ___nc_open(char* file_name, int* ncid);
 
-void ___nc_create(char* file_name, int* file_handle);
+/* Creates NetCDF file with certain flags set already */
+void ___nc_create(char* file_name, int* ncid);
 
-void ___nc_def_dim(int file_handle, Dimension dim);
+/* Define a NetCDF dimension using struct Dimension */
+void ___nc_def_dim(int ncid, Dimension dim);
 
-void ___nc_def_var(int file_handle, Variable var);
+/* Define a NetCDF variable using struct Variable */
+void ___nc_def_var(int ncid, Variable var);
+
+/* Sets variable chunking (size_t array must have size for each dimension) */
+void ___nc_def_var_chunking(int ncid, int varid, size_t* chunksizesp);
+
+/* Enables shuffling and deflation at level 2 */
+void ___nc_def_var_deflate(int ncid, int varid);
+
+/* Passes desired variables to compression functions */
+void variable_compression(int ncid, int timeid, size_t* time_chunks, int specialid, size_t* special_chunks);
 
 /* Print info about the dimension */
-void ___nc_inq_dim(int file_handle, int id, Dimension* dim);
+void ___nc_inq_dim(int ncid, int id, Dimension* dim);
 
 /* Display info about all attributes for the given variable*/
-void ___nc_inq_att(int file_handle, int var_id, int num_attrs);
+void ___nc_inq_att(int ncid, int var_id, int num_attrs);
 
 /* Print info  about the variable. nc_type is ENUM - type details at: 
  * https://www.unidata.ucar.edu/software/netcdf/netcdf-4/newdocs/netcdf-c/NetCDF_002d3-Variable-Types.html 
@@ -52,16 +66,15 @@ void ___nc_inq_att(int file_handle, int var_id, int num_attrs);
  * name - variable name
  * type - NC_TYPE value
  * num_dims -*/
-// void ___nc_inq_var(int file_handle, int id, char* name, nc_type* type, int* num_dims, int* dim_ids, int* num_attrs, char** dim_names);
-void ___nc_inq_var(int file_handle, int id, Variable* var, Dimension* dims);
+void ___nc_inq_var(int ncid, int id, Variable* var, Dimension* dims);
 
-/* file_handle - integer representing the .nc file 
+/* ncid - integer representing the .nc file 
  * var_id - the variable identifier
  * var_type - NC_TYPE value
  * var_dims - number of dimensions used by variable 	
  * var_dim_ids - array of the dimension IDs used 
  * */
-void ___nc_get_var_array(int file_handle, int id, Variable* var, Dimension* dims);
+void ___nc_get_var_array(int ncid, int id, Variable* var, Dimension* dims);
 
 /* Write Time, Level, Lat, Lon values for new file (same values except for Time dim) */
 void skeleton_variable_fill(int copy, int num_vars, Variable* vars, Dimension time_interp);
@@ -78,9 +91,11 @@ void ___test_access_nc_array(Variable* var);
 /* Abstracted calculation to account for new Time dimension length */
 size_t time_dimension_adjust(size_t original_length);
 
+/* Functions for timing within the program. Unused */
 void timer_start(clock_t* start);
 void timer_end(clock_t* start, clock_t* end);
 
+/* Shorthand string equality function */
 int str_eq(char* test, const char* target);
 
 #endif
