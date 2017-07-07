@@ -73,7 +73,7 @@ void ___nc_def_var(int file_handle, Variable var) {
 		NC_ERR(retval);
 }
 
-void ___nc_def_var_chunking(int ncid, int varid, size_t *chunksizesp) {
+void ___nc_def_var_chunking(int ncid, int varid, const size_t *chunksizesp) {
 	if ((retval = nc_def_var_chunking(ncid, varid, NC_CHUNKED, chunksizesp)))
 		NC_ERR(retval);
 }
@@ -84,7 +84,7 @@ void ___nc_def_var_deflate(int ncid, int varid) {
 		NC_ERR(retval)
 }
 
-void ___variable_compression(int ncid, int timeid, size_t* time_chunks, int specialid, size_t* special_chunks) {
+void variable_compression(int ncid, int timeid, const size_t* time_chunks, int specialid, const size_t* special_chunks) {
 	___nc_def_var_chunking(ncid, timeid, time_chunks);
 	___nc_def_var_chunking(ncid, specialid, special_chunks);
 

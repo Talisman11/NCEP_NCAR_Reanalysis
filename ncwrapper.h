@@ -46,13 +46,13 @@ void ___nc_def_dim(int ncid, Dimension dim);
 void ___nc_def_var(int ncid, Variable var);
 
 /* Sets variable chunking (size_t array must have size for each dimension) */
-void ___nc_def_var_chunking(int ncid, int varid, size_t* chunksizesp);
+void ___nc_def_var_chunking(int ncid, int varid, const size_t* chunksizesp);
 
 /* Enables shuffling and deflation at level 2 */
 void ___nc_def_var_deflate(int ncid, int varid);
 
 /* Passes desired variables to compression functions */
-void variable_compression(int ncid, int timeid, size_t* time_chunks, int specialid, size_t* special_chunks);
+void variable_compression(int ncid, int timeid, const size_t* time_chunks, int specialid, const size_t* special_chunks);
 
 /* Print info about the dimension */
 void ___nc_inq_dim(int ncid, int id, Dimension* dim);
@@ -90,6 +90,9 @@ void ___test_access_nc_array(Variable* var);
 
 /* Abstracted calculation to account for new Time dimension length */
 size_t time_dimension_adjust(size_t original_length);
+
+/* Frees memory for Variables and Dimensions allocated of input file, and the memory for the interpolated variable*/
+void clean_up(int um_vars, Variable* vars, Variable interp, Dimension* dims);
 
 /* Functions for timing within the program. Unused */
 void timer_start(clock_t* start);
