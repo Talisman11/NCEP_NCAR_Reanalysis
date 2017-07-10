@@ -8,12 +8,75 @@
 
 extern int retval;
 
+extern char input_dir[];
+extern char output_dir[];
+extern char prefix[];
+extern char suffix[];
+
+
+extern int NUM_GRAINS;
+extern int TEMPORAL_GRANULARITY;
+
 extern size_t TIME_STRIDE;
 extern size_t LVL_STRIDE;
 extern size_t LAT_STRIDE;
 
 extern int VAR_ID_TIME, VAR_ID_LVL, VAR_ID_LAT, VAR_ID_LON, VAR_ID_SPECIAL;
 extern int DIM_ID_TIME, DIM_ID_LVL, DIM_ID_LAT, DIM_ID_LON;
+
+int process_arguments(int argc, char* argv[]) {
+	int opt;
+
+    while ((opt = getopt(argc, argv, "t:i:o:s:p:")) != -1) {
+        switch(opt) {
+            case 't': /* Temporal Granularity (minutes). Affects NUM_GRAINS */
+                TEMPORAL_GRANULARITY = atoi(optarg);
+                NUM_GRAINS = 360 / TEMPORAL_GRANULARITY;
+                break;
+            case 'i': /* Input file directory */
+                strcpy(input_dir, optarg);
+                break;
+            case 'o': /* Output file directory (default is same as input) */
+            	strcpy(output_dir, optarg);
+            	break;
+            case 'p': /* Output file prefix */
+                strcpy(prefix, optarg);
+                break;
+            case 's': /* Output file suffix (default is '.copy'[.nc]) */
+                strcpy(suffix, optarg);
+                break;
+            default:
+            	printf("Bad case!\n");
+            	return 1;
+        }
+    }
+
+    /* Ensure a time value was set */
+    if (TEMPORAL_GRANULARITY == -1 || 360 % TEMPORAL_GRANULARITY != 0) {
+    	printf("Error: Program requires a valid temporal granularity value that divides evenly into 360.\n");
+    	return 1;
+    }
+
+    /* Ensure a directory was actually specified */
+    if (strlen(input_dir) == 0) {
+    	printf("Error: Program requires an input directory.\n");
+    	return 1;
+    }
+
+    /* If no output directory specified, default to the input directory */
+    if (strlen(output_dir) == 0) {
+    	strcpy(output_dir, input_dir);
+    }
+
+    printf("Program proceeding with:\n");
+    printf("\tTemporal Granularity = %d minute slices => %d grains\n", TEMPORAL_GRANULARITY, NUM_GRAINS);
+    printf("\tInput directory = %s\n", input_dir);
+    printf("\tOutput directory = %s\n", output_dir);
+    printf("\tOutput file prefix = %s\n", prefix);
+    printf("\tOutput file suffix = %s\n", suffix);
+
+    return 0;
+}
 
 
 char*  ___nc_type(int nc_type) {
@@ -124,7 +187,6 @@ void ___nc_inq_dim(int file_handle, int id, Dimension* dim) {
     printf("\tName: %s\t ID: %d\t Length: %lu\n", dim->name, dim->id, dim->length);
 }
 
-
 void ___nc_inq_att(int file_handle, int var_id, int num_attrs) {
 	char att_name[NC_MAX_NAME + 1];
 	nc_type att_type;
@@ -143,7 +205,6 @@ void ___nc_inq_att(int file_handle, int var_id, int num_attrs) {
 		 * %*s 	-> string preceded by * spaces for right align */
 		printf("\t\t %-*s %d\t %d\t %lu\n", ATTR_PAD, att_name, att_num, att_type, att_length);
 
-		// Can get Attribute values.. but does not seem very necessary
 	}
 	
 }

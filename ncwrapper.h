@@ -1,10 +1,12 @@
 #ifndef __NCWRAPPER_H_
 #define __NCWRAPPER_H_
 
+#include <unistd.h>
+#include <assert.h>
 
 #define ATTR_PAD 30
-#define TEMPORAL_GRANULARITY 15 // new "sample rate" in minutes of output reanalysis file. 
-#define NUM_GRAINS (360 / TEMPORAL_GRANULARITY)
+// #define TEMPORAL_GRANULARITY 15 // new "sample rate" in minutes of output reanalysis file. 
+// #define NUM_GRAINS (360 / TEMPORAL_GRANULARITY)
 #define DAILY_4X 6.0 // hours between intervals in a day
 
 #define NC_ERR(err_msg) { printf("File: %s Line: %d - NetCDF Error: %s\n", __FILE__, __LINE__, nc_strerror(err_msg)); exit(EXIT_FAILURE); }
@@ -30,6 +32,9 @@ typedef struct Dimension {
 	size_t length;					// Dimension length. Determines size of associated Variables
 } Dimension;
 
+int process_arguments();
+
+
 /* Determine type of nc_type variable */
 char*  ___nc_type(int nc_type);
 
@@ -54,10 +59,10 @@ void ___nc_def_var_deflate(int ncid, int varid);
 /* Passes desired variables to compression functions */
 void variable_compression(int ncid, int timeid, const size_t* time_chunks, int specialid, const size_t* special_chunks);
 
-/* Print info about the dimension */
+/* Print info about the dimension and store into struct Dimension */
 void ___nc_inq_dim(int ncid, int id, Dimension* dim);
 
-/* Display info about all attributes for the given variable*/
+/* Display info about all attributes for the given variable. Does not store attributes */
 void ___nc_inq_att(int ncid, int var_id, int num_attrs);
 
 /* Print info  about the variable. nc_type is ENUM - type details at: 
