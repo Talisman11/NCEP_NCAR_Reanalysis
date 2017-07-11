@@ -78,7 +78,6 @@ int process_arguments(int argc, char* argv[]) {
     return 0;
 }
 
-
 char*  ___nc_type(int nc_type) {
 	switch (nc_type) {
 		case NC_BYTE:
@@ -118,7 +117,7 @@ void ___nc_open(char* file_name, int* file_handle) {
 /* TODO: add NC_NOCLOBBER once program is more finished so written files are not overwritten on accident */
 void ___nc_create(char* file_name, int* file_handle) {
 	/* Create netCDF4-4 classic model to match original NCAR/NCEP format of .nc files */
-	if ((retval = nc_create(file_name, NC_SHARE|NC_NETCDF4|NC_CLASSIC_MODEL, file_handle)))
+	if ((retval = nc_create(file_name, NC_NOCLOBBER|NC_SHARE|NC_NETCDF4|NC_CLASSIC_MODEL, file_handle)))
 		NC_ERR(retval);
 
 	/* Has no effect? */
@@ -247,9 +246,7 @@ void ___nc_get_var_array(int file_handle, int id, Variable* var, Dimension* dims
 		starts[i] 	= 0; 
 		counts[i] 	= dims[var->dim_ids[i]].length; 
 		var->length 	*= dims[var->dim_ids[i]].length;
-		printf("setting length to : %lu\n", var->length);
 	}
-
 
 	/* Use appropriate nc_get_vara() functions to access*/
 	switch(var->type) {
@@ -264,7 +261,7 @@ void ___nc_get_var_array(int file_handle, int id, Variable* var, Dimension* dims
 
 	if (retval)	NC_ERR(retval);
 
-	printf("Populated array - ID: %d Variable: %s Type: %s Size: %lu, \n", var->id, var->name, ___nc_type(var->type), var->length);
+	printf("\tPopulated array - ID: %d Variable: %s Type: %s Size: %lu, \n", var->id, var->name, ___nc_type(var->type), var->length);
 }
 
 void skeleton_variable_fill(int copy, int num_vars, Variable* vars, Dimension time_interp) {

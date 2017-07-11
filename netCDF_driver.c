@@ -45,7 +45,7 @@ int primary_function(){
     DIM_ID_TIME = DIM_ID_LVL = DIM_ID_LAT = DIM_ID_LON = -1;
 
 
-    /*Open the file */
+    /* Open the file */
     ___nc_open(FILE_NAME, &file);
 
     /* File Info */
@@ -55,12 +55,14 @@ int primary_function(){
 
 
     /* Output Dimension Information */
+    printf("Dimension Information:\n");
     dims = (Dimension *) malloc(num_dims * sizeof(Dimension));
     for (int i = 0; i < num_dims; i++) {
         ___nc_inq_dim(file, i, &dims[i]);
     }
 
     /* Output Variable Information */
+    printf("Variable Information:\n");
     vars = (Variable *) malloc(num_vars * sizeof(Variable));
     for (int i = 0; i < num_vars; i++) {
         ___nc_inq_var(file, i, &vars[i], dims);
@@ -125,27 +127,7 @@ int primary_function(){
     return 0; 
 }
 
-int main(int argc, char *argv[]) {
-
-    struct dirent *dir_entry;
-    DIR *dir;
-
-    if (process_arguments(argc, argv)) {
-        printf("Program usage:\n %s -t [temporal granularity] -i [input directory] -o [output directory] -p [output file prefix] -s [output file suffix]\n", argv[0]);
-        exit(1);
-    }
-
-    dir = opendir(input_dir);
-    if (dir == NULL) {
-        printf("Error: Cannot open directory: '%s'\n", input_dir);
-        return 1;
-    }
-
-    /* Loop through all valid files in the directory */
-    while ((dir_entry = readdir(dir)) != NULL) {
-        
-        /* Skip '.' and '..' directories */
-        if ((!strcmp(dir_entry->d_name, ".") || !strcmp(dir_entry->d_name, ".."))) continue;
+void concat_names(struct dirent *dir_entry) {
 
         /* Setup string for file name [input_dir] + [dir_entry_name] */
         strcpy(FILE_NAME, input_dir);
@@ -160,11 +142,44 @@ int main(int argc, char *argv[]) {
 
         printf("Input file: %s\n", FILE_NAME);
         printf("Output file: %s\n", COPY_NAME);
+           
+}
+int main(int argc, char *argv[]) {
+
+    struct dirent *dir_entry;
+    DIR *dir;
+    int file_count = 0;
+
+    if (process_arguments(argc, argv)) {
+        printf("Program usage:\n %s -t [temporal granularity] -i [input directory] -o [output directory] -p [output file prefix] -s [output file suffix]\n", argv[0]);
+        exit(1);
+    }
+
+    dir = opendir(input_dir);
+    if (dir == NULL) {
+        printf("Error: Cannot open directory: '%s'\n", input_dir);
+        return 1;
+    }
+
+    /* Loop through all valid files in the directory */
+    // while ((dir_entry = readdir(dir)) != NULL 
+    //     && (!strcmp(dir_entry->d_name, ".") && !strcmp(dir_entry->d_name, "..") 
+    //     && !strstr(dir_entry->d_name, suffix))) {
+
+    // dont need to worry about program looping forever because pointer moves forward through directory
+    // just make sure it does not open the wrong ones.
+    while ((dir_entry = readdir(dir)) != NULL) {
+        
+        /* Skip '.' and '..' directories, and files created just now */
+        if ((!strcmp(dir_entry->d_name, ".") || !strcmp(dir_entry->d_name, "..")) ||
+            strstr(dir_entry->d_name, suffix)) continue;
+
+        concat_names(dir_entry);
 
         primary_function();
 
-        strncpy(FILE_NAME, NULL, 256);
-        strncpy(COPY_NAME, NULL, 256);
+        memset(FILE_NAME, 0, 256);
+        memset(COPY_NAME, 0, 256);
     }
 
     closedir(dir);
