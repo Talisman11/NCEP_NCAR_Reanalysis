@@ -148,7 +148,6 @@ int main(int argc, char *argv[]) {
 
     struct dirent *dir_entry;
     DIR *dir;
-    int file_count = 0;
 
     if (process_arguments(argc, argv)) {
         printf("Program usage:\n %s -t [temporal granularity] -i [input directory] -o [output directory] -p [output file prefix] -s [output file suffix]\n", argv[0]);

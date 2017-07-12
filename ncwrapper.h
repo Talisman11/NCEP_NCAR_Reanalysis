@@ -3,10 +3,10 @@
 
 #include <unistd.h>
 #include <assert.h>
+#include <getopt.h>
+#include <time.h>
 
 #define ATTR_PAD 30
-// #define TEMPORAL_GRANULARITY 15 // new "sample rate" in minutes of output reanalysis file. 
-// #define NUM_GRAINS (360 / TEMPORAL_GRANULARITY)
 #define DAILY_4X 6.0 // hours between intervals in a day
 
 #define NC_ERR(err_msg) { printf("File: %s Line: %d - NetCDF Error: %s\n", __FILE__, __LINE__, nc_strerror(err_msg)); exit(EXIT_FAILURE); }
