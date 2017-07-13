@@ -1,5 +1,5 @@
 OBJS = netCDF_driver.o ncwrapper.o
-CC = h5cc
+CC = gcc
 DEBUG = -g
 NETCDF_FLAGS = -lm -lnetcdf
 CFLAGS += -std=c99 -Wall -O3
