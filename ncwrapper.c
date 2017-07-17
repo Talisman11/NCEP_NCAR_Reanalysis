@@ -23,10 +23,13 @@ extern size_t LAT_STRIDE;
 extern int VAR_ID_TIME, VAR_ID_LVL, VAR_ID_LAT, VAR_ID_LON, VAR_ID_SPECIAL;
 extern int DIM_ID_TIME, DIM_ID_LVL, DIM_ID_LAT, DIM_ID_LON;
 
+int disable_noclobber = 0;
+int create_mask = NC_SHARE|NC_NETCDF4|NC_CLASSIC_MODEL;
+
 int process_arguments(int argc, char* argv[]) {
 	int opt;
 
-    while ((opt = getopt(argc, argv, "t:i:o:s:p:")) != -1) {
+    while ((opt = getopt(argc, argv, "t:i:do:s:p:")) != -1) {
         switch(opt) {
             case 't': /* Temporal Granularity (minutes). Affects NUM_GRAINS */
                 TEMPORAL_GRANULARITY = atoi(optarg);
@@ -35,6 +38,9 @@ int process_arguments(int argc, char* argv[]) {
             case 'i': /* Input file directory */
                 strcpy(input_dir, optarg);
                 break;
+            case 'd':
+            	disable_noclobber = 1;
+            	break;
             case 'o': /* Output file directory (default is same as input) */
             	strcpy(output_dir, optarg);
             	break;
@@ -115,8 +121,13 @@ void ___nc_open(char* file_name, int* file_handle) {
 
 /* TODO: add NC_NOCLOBBER once program is more finished so written files are not overwritten on accident */
 void ___nc_create(char* file_name, int* file_handle) {
+	/* -d flag ENABLES clobbering !(disable_noclobber = 1) = 0 -> bit not set */
+	if (!disable_noclobber)
+		create_mask = create_mask | NC_NOCLOBBER;
+
+
 	/* Create netCDF4-4 classic model to match original NCAR/NCEP format of .nc files */
-	if ((retval = nc_create(file_name, NC_NOCLOBBER|NC_SHARE|NC_NETCDF4|NC_CLASSIC_MODEL, file_handle)))
+	if ((retval = nc_create(file_name, create_mask, file_handle)))
 		NC_ERR(retval);
 
 	/* Has no effect? */
@@ -300,13 +311,13 @@ void temporal_interpolate(int copy, Variable* orig, Variable* interp, Dimension*
 	float m; // for slope
 
 	// Debugging code
-	// printf("var: name: %s id: %d num_dims %d length %lu\n", orig->name, orig->id, orig->num_dims, orig->length);
-	// for (int i = 0; i < orig->num_dims; i++) {
-	// 	printf("dim_ids[%d] = %d\n", i, orig->dim_ids[i]);
-	// }
-	// for (int i = 0; i < 4; i++) {
-	// 	printf("dim name: %s id: %d length: %lu\n", dims[i].name, dims[i].id, dims[i].length);
-	// }
+	printf("var: name: %s id: %d num_dims %d length %lu\n", orig->name, orig->id, orig->num_dims, orig->length);
+	for (int i = 0; i < orig->num_dims; i++) {
+		printf("dim_ids[%d] = %d\n", i, orig->dim_ids[i]);
+	}
+	for (int i = 0; i < 4; i++) {
+		printf("dim name: %s id: %d length: %lu\n", dims[i].name, dims[i].id, dims[i].length);
+	}
 
 	// all dimensions run from [0, dim_length) except for Time, which is [0, 1)
 	for (int i = 0; i < interp->num_dims; i++) {
@@ -322,8 +333,8 @@ void temporal_interpolate(int copy, Variable* orig, Variable* interp, Dimension*
 	float* src = orig->data;
 	float* dst = (float *) interp->data;
 
-	// for (time = 0; time < 100; time++) {
-	for (time = 0; time < dims[orig->dim_ids[0]].length; time++) {
+	/* {2010} [Cube], [Cube], ..., [Cube_n] {2011} [Cube_1], [Cube_2], ..., [Cube_n] */
+	for (time = 0; time < dims[orig->dim_ids[0]].length - 1; time++) {
 		for (grain = 0; grain < NUM_GRAINS; grain++) {
 			for (lvl = 0; lvl < dims[orig->dim_ids[1]].length; lvl++) {
 				for (lat = 0; lat < dims[orig->dim_ids[2]].length; lat++) {
@@ -337,10 +348,10 @@ void temporal_interpolate(int copy, Variable* orig, Variable* interp, Dimension*
 						dst[interp_idx] = m*((float) grain / (float) NUM_GRAINS) + src[x_idx];
 
 						/* Print out debug level each grain */
-						// if (grain == 0 && lvl == 0 && lat == 0 && lon == 0) {
-						// 	printf("[%lu][%lu][%lu][%lu][%lu] \t data[%lu] = %f \t interp[%lu] = %f \t data[%lu] = %f \n",
-						// 	time, grain, lvl, lat, lon, x_idx, src[x_idx], interp_idx, dst[interp_idx], y_idx, src[y_idx]);	
-						// }
+						if (grain == 0 && lvl == 0 && lat == 0 && lon == 0) {
+							printf("[%lu][%lu][%lu][%lu][%lu] \t data[%lu] = %f \t interp[%lu] = %f \t data[%lu] = %f \n",
+							time, grain, lvl, lat, lon, x_idx, src[x_idx], interp_idx, dst[interp_idx], y_idx, src[y_idx]);	
+						}
 					}
 				}
 			}
@@ -349,9 +360,6 @@ void temporal_interpolate(int copy, Variable* orig, Variable* interp, Dimension*
 
 			if ((retval = nc_put_vara_float(copy, interp->id, starts, counts, dst)))
 				NC_ERR(retval);
-
-			// printf("starts: %lu %lu %lu %lu ends: %lu %lu %lu %lu\n", starts[0], starts[1], starts[2], starts[3],
-			// 	ends[0], ends[1], ends[2], ends[3]);
 		}
 	}
 }

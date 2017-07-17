@@ -1,19 +1,26 @@
 #!/bin/bash
+
 ### set the number of nodes
 ### set the number of PEs per node
-#PBS -l nodes=2048:ppn=32:xe
+#PBS -l nodes=2:ppn=2
+
 ### set the wallclock time
 #PBS -l walltime=01:00:00
+
 ### set the job name
-#PBS -N testjob
+#PBS -N NCAR_CURL
+
 ### set the job stdout and stderr
 #PBS -e $PBS_JOBID.err
 #PBS -o $PBS_JOBID.out
+
 ### set email notification
-##PBS -m bea
-##PBS -M username@host
+#PBS -m bea
+#PBS -M bchen36@illinois.edu
+
 ### In case of multiple allocations, select which one to charge
 ##PBS -A xyz
+
 ### Set umask so users in my group can read job stdout and stderr files
 #PBS -W umask=0027
 
@@ -45,9 +52,4 @@
 ### redirecting stdin and stdout if needed
 ### NOTE: (the "in" file must exist for input)
 
-
-curl -O ftp://anonymous@ftp.cdc.noaa.gov/Datasets/ncep.reanalysis/pressure/air.[2001-20016].nc
-
-# aprun -n 65536 ./app.exe  < in > out.$PBS_JOBID
-
-### For more information see the man page for aprun
+curl -O ftp://anonymous@ftp.cdc.noaa.gov/Datasets/ncep.reanalysis/pressure/air.[2001-2016].nc
