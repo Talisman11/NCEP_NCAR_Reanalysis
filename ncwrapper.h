@@ -5,6 +5,8 @@
 #include <assert.h>
 #include <getopt.h>
 #include <time.h>
+#include <dirent.h>
+
 
 #define ATTR_PAD 30
 #define DAILY_4X 6.0 // hours between intervals in a day
@@ -33,7 +35,8 @@ typedef struct Dimension {
 } Dimension;
 
 int process_arguments();
-
+int invalid_file(char* name);
+void concat_names(struct dirent* dir_entry_cur, struct dirent* dir_entry_next);
 
 /* Determine type of nc_type variable */
 char*  ___nc_type(int nc_type);

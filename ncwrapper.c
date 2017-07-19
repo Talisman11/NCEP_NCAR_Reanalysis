@@ -1,17 +1,20 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <netcdf.h>
 
-#include "ncwrapper.h"
 
-extern int retval;
+#include "ncwrapper.h"
 
 extern char input_dir[];
 extern char output_dir[];
 extern char prefix[];
 extern char suffix[];
 
+extern char FILE_CUR[];
+extern char FILE_NEXT[];
+extern char COPY[];
 
 extern int NUM_GRAINS;
 extern int TEMPORAL_GRANULARITY;
@@ -23,13 +26,15 @@ extern size_t LAT_STRIDE;
 extern int VAR_ID_TIME, VAR_ID_LVL, VAR_ID_LAT, VAR_ID_LON, VAR_ID_SPECIAL;
 extern int DIM_ID_TIME, DIM_ID_LVL, DIM_ID_LAT, DIM_ID_LON;
 
+int retval;
 int disable_noclobber = 0;
+int enable_verbose = 0;
 int create_mask = NC_SHARE|NC_NETCDF4|NC_CLASSIC_MODEL;
 
 int process_arguments(int argc, char* argv[]) {
 	int opt;
 
-    while ((opt = getopt(argc, argv, "t:i:do:s:p:")) != -1) {
+    while ((opt = getopt(argc, argv, "t:i:do:s:p:v")) != -1) {
         switch(opt) {
             case 't': /* Temporal Granularity (minutes). Affects NUM_GRAINS */
                 TEMPORAL_GRANULARITY = atoi(optarg);
@@ -50,6 +55,9 @@ int process_arguments(int argc, char* argv[]) {
             case 's': /* Output file suffix (default is '.copy'[.nc]) */
                 strcpy(suffix, optarg);
                 break;
+            case 'v':
+            	enable_verbose = 1;
+            	break;
             default:
             	printf("Bad case!\n");
             	return 1;
@@ -81,6 +89,46 @@ int process_arguments(int argc, char* argv[]) {
     printf("\tOutput file suffix = %s\n", suffix);
 
     return 0;
+}
+
+/* Verify file is not . or .. directory, does not contain suffix or prefix, and is indeed a .nc file */
+int invalid_file(char* name) {
+
+    if (!(strcmp(name, ".")) || !strcmp(name, ".."))
+        return 1;
+
+    if ((strlen(suffix) > 0 && strstr(name, suffix)) || 
+        (strlen(prefix) > 0 && strstr(name, prefix))) 
+        return 1;
+
+    if (!strstr(name, ".nc")) 
+        return 1;
+
+    return 0;
+}
+
+
+void concat_names(struct dirent *dir_entry_cur, struct dirent *dir_entry_next) {
+
+        /* Setup string for FILE_CUR name: [input_dir] + [dir_entry_name] */
+        strcpy(FILE_CUR, input_dir);
+        strcat(FILE_CUR, dir_entry_cur->d_name);
+
+        /* Same for FILE_NEXT */
+        strcpy(FILE_NEXT, input_dir);
+        strcat(FILE_NEXT, dir_entry_next->d_name);
+
+        /* Setup string for COPY name [output_dir] + [prefix] + [dir_entry_name] + [suffix] */
+        strcpy(COPY, output_dir);
+        strcat(COPY, prefix);
+        strncat(COPY, dir_entry_cur->d_name, strlen(dir_entry_cur->d_name) - 3);
+        strcat(COPY, suffix);
+        strcat(COPY, ".nc");
+
+        printf("Input_1 FILE_CUR:  %s\n", FILE_CUR);
+        printf("Input_2 FILE_NEXT: %s\n", FILE_NEXT);
+        printf("Output  COPY:      %s\n", COPY);
+           
 }
 
 char*  ___nc_type(int nc_type) {
@@ -193,7 +241,8 @@ void ___nc_inq_dim(int file_handle, int id, Dimension* dim) {
 	if (str_eq(dim->name, "lon"))
 		DIM_ID_LON = id;
 
-    printf("\tName: %s\t ID: %d\t Length: %lu\n", dim->name, dim->id, dim->length);
+	if (enable_verbose)
+    	printf("\tName: %s\t ID: %d\t Length: %lu\n", dim->name, dim->id, dim->length);
 }
 
 void ___nc_inq_att(int file_handle, int var_id, int num_attrs) {
@@ -235,15 +284,18 @@ void ___nc_inq_var(int file_handle, int id, Variable* var, Dimension* dims) {
 	else
 		VAR_ID_SPECIAL = id;
 
-    printf("\tName: %s\t ID: %d\t netCDF_type: %s\t Num_dims: %d\t Num_attrs: %d\n", 
-    	var->name, id, ___nc_type(var->type), var->num_dims, var->num_attrs);
+	if (enable_verbose) {
+	    printf("\tName: %s\t ID: %d\t netCDF_type: %s\t Num_dims: %d\t Num_attrs: %d\n", 
+	    	var->name, id, ___nc_type(var->type), var->num_dims, var->num_attrs);
 
-    for (int i = 0; i < var->num_dims; i++) {
-    	printf("\tDim_id[%d] = %d (%s)\n", i, var->dim_ids[i], dims[var->dim_ids[i]].name);
-    }
+	    for (int i = 0; i < var->num_dims; i++) {
+	    	printf("\tDim_id[%d] = %d (%s)\n", i, var->dim_ids[i], dims[var->dim_ids[i]].name);
+	    }
 
-    // Display attribute data
-	___nc_inq_att(file_handle, id, var->num_attrs);
+	    // Display attribute data
+		___nc_inq_att(file_handle, id, var->num_attrs);
+	}
+
 }
 
 void ___nc_get_var_array(int file_handle, int id, Variable* var, Dimension* dims) {
@@ -271,7 +323,8 @@ void ___nc_get_var_array(int file_handle, int id, Variable* var, Dimension* dims
 
 	if (retval)	NC_ERR(retval);
 
-	printf("\tPopulated array - ID: %d Variable: %s Type: %s Size: %lu, \n", var->id, var->name, ___nc_type(var->type), var->length);
+	if (enable_verbose) 
+		printf("\tPopulated array - ID: %d Variable: %s Type: %s Size: %lu, \n", var->id, var->name, ___nc_type(var->type), var->length);
 }
 
 void skeleton_variable_fill(int copy, int num_vars, Variable* vars, Dimension time_interp) {
@@ -311,13 +364,13 @@ void temporal_interpolate(int copy, Variable* orig, Variable* interp, Dimension*
 	float m; // for slope
 
 	// Debugging code
-	printf("var: name: %s id: %d num_dims %d length %lu\n", orig->name, orig->id, orig->num_dims, orig->length);
-	for (int i = 0; i < orig->num_dims; i++) {
-		printf("dim_ids[%d] = %d\n", i, orig->dim_ids[i]);
-	}
-	for (int i = 0; i < 4; i++) {
-		printf("dim name: %s id: %d length: %lu\n", dims[i].name, dims[i].id, dims[i].length);
-	}
+	// printf("var: name: %s id: %d num_dims %d length %lu\n", orig->name, orig->id, orig->num_dims, orig->length);
+	// for (int i = 0; i < orig->num_dims; i++) {
+	// 	printf("dim_ids[%d] = %d\n", i, orig->dim_ids[i]);
+	// }
+	// for (int i = 0; i < 4; i++) {
+	// 	printf("dim name: %s id: %d length: %lu\n", dims[i].name, dims[i].id, dims[i].length);
+	// }
 
 	// all dimensions run from [0, dim_length) except for Time, which is [0, 1)
 	for (int i = 0; i < interp->num_dims; i++) {
@@ -348,10 +401,10 @@ void temporal_interpolate(int copy, Variable* orig, Variable* interp, Dimension*
 						dst[interp_idx] = m*((float) grain / (float) NUM_GRAINS) + src[x_idx];
 
 						/* Print out debug level each grain */
-						if (grain == 0 && lvl == 0 && lat == 0 && lon == 0) {
-							printf("[%lu][%lu][%lu][%lu][%lu] \t data[%lu] = %f \t interp[%lu] = %f \t data[%lu] = %f \n",
-							time, grain, lvl, lat, lon, x_idx, src[x_idx], interp_idx, dst[interp_idx], y_idx, src[y_idx]);	
-						}
+						// if (grain == 0 && lvl == 0 && lat == 0 && lon == 0) {
+						// 	printf("[%lu][%lu][%lu][%lu][%lu] \t data[%lu] = %f \t interp[%lu] = %f \t data[%lu] = %f \n",
+						// 	time, grain, lvl, lat, lon, x_idx, src[x_idx], interp_idx, dst[interp_idx], y_idx, src[y_idx]);	
+						// }
 					}
 				}
 			}
