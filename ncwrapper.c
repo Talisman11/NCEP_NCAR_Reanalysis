@@ -27,7 +27,7 @@ extern int VAR_ID_TIME, VAR_ID_LVL, VAR_ID_LAT, VAR_ID_LON, VAR_ID_SPECIAL;
 extern int DIM_ID_TIME, DIM_ID_LVL, DIM_ID_LAT, DIM_ID_LON;
 
 int retval;
-int disable_noclobber = 0;
+int disable_clobber = 0;
 int enable_verbose = 0;
 int create_mask = NC_SHARE|NC_NETCDF4|NC_CLASSIC_MODEL;
 
@@ -44,7 +44,7 @@ int process_arguments(int argc, char* argv[]) {
                 strcpy(input_dir, optarg);
                 break;
             case 'd':
-            	disable_noclobber = 1;
+            	disable_clobber = 1;
             	break;
             case 'o': /* Output file directory (default is same as input) */
             	strcpy(output_dir, optarg);
@@ -94,16 +94,21 @@ int process_arguments(int argc, char* argv[]) {
 /* Verify file is not . or .. directory, does not contain suffix or prefix, and is indeed a .nc file */
 int invalid_file(char* name) {
 
-    if (!(strcmp(name, ".")) || !strcmp(name, ".."))
+    if (!(strcmp(name, ".")) || !strcmp(name, "..")) {
         return 1;
+    }
 
-    if ((strlen(suffix) > 0 && strstr(name, suffix)) || 
-        (strlen(prefix) > 0 && strstr(name, prefix))) 
+    if ((disable_clobber == 0) && 
+    	((strlen(suffix) > 0 && strstr(name, suffix)) || (strlen(prefix) > 0 && strstr(name, prefix)))) {
+    	printf("Presence of prefix or suffix in file indicates file already processed\n");
         return 1;
+    }
 
-    if (!strstr(name, ".nc")) 
+    if (!strstr(name, ".nc")) {
+    	printf("File is not a NetCDF file\n");
         return 1;
-
+    }
+    	
     return 0;
 }
 
@@ -167,10 +172,9 @@ void ___nc_open(char* file_name, int* file_handle) {
     	NC_ERR(retval);
 }
 
-/* TODO: add NC_NOCLOBBER once program is more finished so written files are not overwritten on accident */
 void ___nc_create(char* file_name, int* file_handle) {
-	/* -d flag ENABLES clobbering !(disable_noclobber = 1) = 0 -> bit not set */
-	if (!disable_noclobber)
+	/* -d flag ENABLES clobbering !(disable_clobber = 1) = 0 -> bit not set */
+	if (disable_clobber)
 		create_mask = create_mask | NC_NOCLOBBER;
 
 
@@ -327,6 +331,33 @@ void ___nc_get_var_array(int file_handle, int id, Variable* var, Dimension* dims
 		printf("\tPopulated array - ID: %d Variable: %s Type: %s Size: %lu, \n", var->id, var->name, ___nc_type(var->type), var->length);
 }
 
+int verify_next_file_variable(int copy, int next, Variable* var, Variable* var_next, Dimension* dims) {
+	int num_dims, num_vars;
+	size_t starts[var->num_dims];
+	size_t counts[var->num_dims];	
+
+	/* Inquire next file to verify its variable matches the current variable */
+	nc_inq(next, &num_dims, &num_vars, NULL, NULL);
+	___nc_inq_var(next, VAR_ID_SPECIAL, var_next, dims);
+
+	/* Check that the variable names match exactly. If not, break */
+	if (strcmp(var->name, var_next->name) != 0) {
+		return 1;
+	}
+
+	for (int i = 0; i < var->num_dims; i++) {
+		starts[i] = 0; 
+		counts[i] = dims[var->dim_ids[i]].length;
+	}
+	counts[0] = 1; // Only want one "cube" or row of data from the Time dimension
+
+	/* Since the variables are the same, grab the same ID and put it into our var_next->data */
+	if ((retval = nc_get_vara_float(next, var->id, starts, counts, (float *) var_next->data)))
+		NC_ERR(retval);
+
+	return 0;
+}
+
 void skeleton_variable_fill(int copy, int num_vars, Variable* vars, Dimension time_interp) {
 
 	for (int i = 0; i < num_vars; i++) {
@@ -356,8 +387,7 @@ size_t ___access_nc_array(size_t time_idx, size_t lvl_idx, size_t lat_idx, size_
 	return (TIME_STRIDE * time_idx) + (LVL_STRIDE * lvl_idx) + (LAT_STRIDE * lat_idx) + lon_idx;
 }
 
-
-void temporal_interpolate(int copy, Variable* orig, Variable* interp, Dimension* dims) {
+void temporal_interpolate(int copy, int next, Variable* orig, Variable* interp, Variable* var_next, Dimension* dims) {
 	size_t time, grain, lvl, lat, lon, x_idx, y_idx, interp_idx;
 	size_t starts[interp->num_dims];
 	size_t counts[interp->num_dims];
@@ -379,12 +409,9 @@ void temporal_interpolate(int copy, Variable* orig, Variable* interp, Dimension*
 	}
 	counts[0] = 1; // Time dimension we only want to do ONE count at a time
 
-
-
-
-
 	float* src = orig->data;
 	float* dst = (float *) interp->data;
+	float* next_data = var_next->data;
 
 	/* {2010} [Cube], [Cube], ..., [Cube_n] {2011} [Cube_1], [Cube_2], ..., [Cube_n] */
 	for (time = 0; time < dims[orig->dim_ids[0]].length - 1; time++) {
@@ -415,27 +442,37 @@ void temporal_interpolate(int copy, Variable* orig, Variable* interp, Dimension*
 				NC_ERR(retval);
 		}
 	}
+
+	/* Time to do final interpolation between last value of current file and first value of next file */
+	for (; time < dims[orig->dim_ids[0]].length; time++) {
+		for (grain = 0; grain < NUM_GRAINS; grain++) {
+			for (lvl = 0; lvl < dims[orig->dim_ids[1]].length; lvl++) {
+				for (lat = 0; lat < dims[orig->dim_ids[2]].length; lat++) {
+					for (lon = 0; lon < dims[orig->dim_ids[3]].length; lon++) {
+						x_idx = ___access_nc_array(time, lvl, lat, lon);
+						y_idx = ___access_nc_array(0, lvl, lat, lon); // only access the first (and only) Time row from var_next
+
+						interp_idx = ___access_nc_array(0, lvl, lat, lon); // same value; but separated for clarity
+
+						m = next_data[y_idx] - src[x_idx];
+						dst[interp_idx] = m*((float) grain / (float) NUM_GRAINS) + src[x_idx];
+
+					}
+				}
+			}
+
+
+			starts[0] = NUM_GRAINS * time + grain;
+
+			if ((retval = nc_put_vara_float(copy, interp->id, starts, counts, dst)))
+				NC_ERR(retval);
+		}
+	}
+
 }
 
 size_t time_dimension_adjust(size_t original_length) {
 	return original_length * NUM_GRAINS;
-}
-
-void ___test_access_nc_array(Variable* var) {
-	float* destination = var->data;
-
-	printf("Var: %s, %d, %d, %d, %lu\n", var->name, var->id, var->num_dims, var->num_attrs, var->length);
-	for (size_t time_idx = 0; time_idx < 3; time_idx++) {
-		for (size_t lvl_idx = 0; lvl_idx < 3; lvl_idx++) {
-			for (size_t lat_idx = 0; lat_idx < 17; lat_idx++) {
-				for (size_t lon_idx = 0; lon_idx < 17; lon_idx++) {
-					size_t idx = ___access_nc_array(time_idx, lvl_idx, lat_idx, lon_idx);
-					printf("var[%lu][%lu][%lu][%lu] = var[%lu] = %f \n", 
-						time_idx, lvl_idx, lat_idx, lon_idx, idx, destination[idx]);
-				}
-			}
-		}
-	}   
 }
 
 void clean_up(int num_vars, Variable* vars, Variable interp, Dimension* dims) {

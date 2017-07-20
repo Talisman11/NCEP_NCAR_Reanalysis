@@ -34,7 +34,7 @@ int primary_function() {
     int file_id_cur, file_id_next, copy_id; // nc_open
     int num_dims, num_vars, num_global_attrs, unlimdimidp; // nc_inq
 
-    Variable *vars, var_interp;
+    Variable *vars, var_interp, var_next;
     Dimension *dims, time_interp;
 
     /* Initialize our global variables */
@@ -44,7 +44,6 @@ int primary_function() {
 
     /* Open the FILE_CUR */
     ___nc_open(FILE_CUR, &file_id_cur);
-
 
     /* FILE_CUR Info */
     nc_inq(file_id_cur, &num_dims, &num_vars, &num_global_attrs, &unlimdimidp);
@@ -63,23 +62,7 @@ int primary_function() {
         ___nc_inq_var(file_id_cur, i, &vars[i], dims);
     }
 
-    /* Determine if the next file is the correct file for interpolation */
-    ___nc_open(FILE_NEXT, &file_id_next);
-
-    if (strstr(FILE_NEXT, vars[VAR_ID_SPECIAL].name) == NULL) {
-        nc_close(file_id_cur);
-        nc_close(file_id_next);
-        return 1;
-    }
-
-    printf("Processing:\n");
-    printf("\t%s\n", FILE_CUR);
-    printf("\t%s\n", FILE_NEXT);
-
-    /* Populate Variable struct arrays */
-    for (int i = 0; i < num_vars; i++) {
-        ___nc_get_var_array(file_id_cur, i, &vars[i], dims);
-    }
+    /******VERIFY*****/
 
     /* Ensure the dimensions are as expected. Not sure what to do if not. Level will be '2' if present; else Time will be '2'. */
     assert( 0 == strcmp(dims[0].name,"lon") &&
@@ -91,6 +74,21 @@ int primary_function() {
     TIME_STRIDE = dims[0].length * dims[1].length * dims[2].length;
     LVL_STRIDE  = dims[0].length * dims[1].length;
     LAT_STRIDE  = dims[0].length;
+
+    /* Determine if the next file is the correct file for interpolation */
+    ___nc_open(FILE_NEXT, &file_id_next);
+    var_next.data = malloc(sizeof(float) * (TIME_STRIDE));
+
+    if (verify_next_file_variable(file_id_cur, file_id_next, &vars[VAR_ID_SPECIAL], &var_next, dims)) {
+        printf("Warning: FILE_CUR var '%s' does not match FILE_NEXT var '%s'. Breaking out.\n", 
+            vars[VAR_ID_SPECIAL].name, var_next.name);
+        return 1;
+    }
+
+    /* Now that we know our files are (very likely) the same variable, populate the arrays */
+    for (int i = 0; i < num_vars; i++) {
+        ___nc_get_var_array(file_id_cur, i, &vars[i], dims);
+    }
 
     /**** Set up and perform temporal interpolation ****/
     ___nc_create(COPY, &copy_id);
@@ -125,7 +123,7 @@ int primary_function() {
     /* Fill out values for all variables asides from the special */
     skeleton_variable_fill(copy_id, num_vars, vars, time_interp);
 
-    temporal_interpolate(copy_id, &vars[VAR_ID_SPECIAL], &var_interp, dims);
+    temporal_interpolate(copy_id, file_id_next, &vars[VAR_ID_SPECIAL], &var_interp, &var_next, dims);
 
     clean_up(num_vars, vars, var_interp, dims); 
 
@@ -136,65 +134,30 @@ int primary_function() {
 }
 
 int main(int argc, char *argv[]) {
-
     int count;
     struct dirent **dir_list;
-    // struct dirent *dir_entry;
-    // DIR *dir;
 
     if (process_arguments(argc, argv)) {
         printf("Program usage:\n %s -t [temporal granularity] -i [input directory] -d [delete flag; no args] -o [output directory] -p [output FILE_CUR prefix] -s [output FILE_CUR suffix]\n", argv[0]);
         exit(1);
     }
 
-
-    // dir = opendir(input_dir);
-    // if (dir == NULL) {
-    //     printf("Error: Cannot open directory: '%s'\n", input_dir);
-    //     return 1;
-    // }
-
-
-    /* Loop through all valid files in the directory */
-    // while ((dir_entry = readdir(dir)) != NULL) {
-    //     printf("Name: %s\n", dir_entry->d_name);
-    //     /* Skip '.' and '..' directories, and files containing the suffix or prefix */
-    //     if ((!strcmp(dir_entry->d_name, ".") || !strcmp(dir_entry->d_name, ".."))) continue;
-
-        // if (strlen(suffix) > 0 && strstr(dir_entry->d_name, suffix)) continue;
-        // if (strlen(prefix) > 0 && strstr(dir_entry->d_name, prefix)) continue;
-        // if (!strstr(dir_entry->d_name, ".nc")) continue;
-
-    //     concat_names(dir_entry);
-
-    //     primary_function();
-
-    //     memset(FILE_CUR, 0, 256);
-    //     memset(COPY, 0, 256);
-    // }
-
-    // closedir(dir);
-    
-
+    // should do some error checking here
     count = scandir(input_dir, &dir_list, NULL, alphasort);
-
 
     /* Loop through and grab pairs of files. I.e. A1 A2 A3 B1 B2 goes:
      * [A1 A2] -> [A2 A3] -> [A3 B1] --SKIP!--> [B1 B2] <END> */
     for (int i = 0; i < count - 1; i++) {
-        /* */
         if (invalid_file(dir_list[i]->d_name)) {
-            printf("Warning: '%s' invalid name or type. Examining next pair.\n", dir_list[i]->d_name);
+            printf("Warning: '%s' invalid name or file type. Examining next pair.\n", dir_list[i]->d_name);
             continue;
         }
 
         if (invalid_file(dir_list[i + 1]->d_name)) {
-            printf("Warning: '%s' invalid name or type. Skipping pair entries.\n", dir_list[i++]->d_name);
+            printf("Warning: '%s' invalid name or file type. Skipping pair entries.\n", dir_list[i++]->d_name);
             continue;
         }
 
-        // confirm they match to some degree
-        
         concat_names(dir_list[i], dir_list[i+1]);
 
         primary_function();
@@ -202,8 +165,6 @@ int main(int argc, char *argv[]) {
         memset(FILE_CUR, 0, 256);
         memset(FILE_NEXT, 0, 256);
         memset(COPY, 0, 256);
-
-
     }
 
     // Clean up the allocated array of names

@@ -91,10 +91,7 @@ void skeleton_variable_fill(int copy, int num_vars, Variable* vars, Dimension ti
 size_t ___access_nc_array(size_t time_idx, size_t lvl_idx, size_t lat_idx, size_t lon_idx);
 
 /* Perform interpolation for the desired variable */
-void temporal_interpolate(int copy, Variable* var, Variable* interp, Dimension* dims);
-
-/* Tests the 1D access function. Loops through 17 x 17 (lat and lon) and a few levels and time slices. No checking atm */
-void ___test_access_nc_array(Variable* var);
+void temporal_interpolate(int copy, int next, Variable* var, Variable* interp, Variable* var_next, Dimension* dims);
 
 /* Abstracted calculation to account for new Time dimension length */
 size_t time_dimension_adjust(size_t original_length);
