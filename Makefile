@@ -3,7 +3,7 @@ CRAY_CC = cc
 # CC = h5cc
 # DEBUG = -g
 NETCDF_FLAGS = -lm -lnetcdf
-CFLAGS += -g -Wall -O3
+CFLAGS += -g -O3
 NAME = reanalysis
 
 # program_cray: $(OBJS)

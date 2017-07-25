@@ -5,7 +5,7 @@
 #PBS -l nodes=2:ppn=2
 
 ### set the wallclock time
-#PBS -l walltime=01:00:00
+#PBS -l walltime=01:30:00
 
 ### set the job name
 #PBS -N NCAR_CURL
@@ -52,4 +52,5 @@
 ### redirecting stdin and stdout if needed
 ### NOTE: (the "in" file must exist for input)
 
-curl -O ftp://anonymous@ftp.cdc.noaa.gov/Datasets/ncep.reanalysis/pressure/air.[2001-2016].nc
+cd scratch/ncar_files/pressure/
+aprun -n 2 curl -O ftp://anonymous@ftp.cdc.noaa.gov/Datasets/ncep.reanalysis/pressure/air.[2008-2016].nc
