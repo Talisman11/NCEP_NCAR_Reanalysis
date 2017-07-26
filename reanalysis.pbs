@@ -2,10 +2,10 @@
 
 ### set the number of nodes
 ### set the number of PEs per node
-#PBS -l nodes=4:ppn=4
+#PBS -l nodes=1:ppn=1
 
 ### set the wallclock time
-#PBS -l walltime=03:00:00
+#PBS -l walltime=01:00:00
 
 ### set the job name
 #PBS -N NCAR_Reanalysis
@@ -52,4 +52,5 @@
 ### redirecting stdin and stdout if needed
 ### NOTE: (the "in" file must exist for input)
 
-aprun -n 4 -N 4 ./reanalysis -t 90 -i ../scratch/ncar_files/pressure/
+cd Reanalysis/
+aprun -n 1 ./reanalysis -t 90 -i ../scratch/ncar_files/pressure/ -o ../scratch/ncar_files/pressure_interpolated/ -p interp_ -s 90 -v
