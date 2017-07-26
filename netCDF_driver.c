@@ -41,7 +41,6 @@ int primary_function() {
     VAR_ID_TIME = VAR_ID_LVL = VAR_ID_LAT = VAR_ID_LON = VAR_ID_SPECIAL = -1;
     DIM_ID_TIME = DIM_ID_LVL = DIM_ID_LAT = DIM_ID_LON = -1;
 
-
     /* Open the FILE_CUR */
     ___nc_open(FILE_CUR, &file_id_cur);
 
@@ -62,18 +61,10 @@ int primary_function() {
         ___nc_inq_var(file_id_cur, i, &vars[i], dims);
     }
 
-    /******VERIFY*****/
-
-    /* Ensure the dimensions are as expected. Not sure what to do if not. Level will be '2' if present; else Time will be '2'. */
-    assert( 0 == strcmp(dims[0].name,"lon") &&
-            0 == strcmp(dims[1].name,"lat") &&
-            0 == strcmp(dims[2].name,"level") &&
-            0 == strcmp(dims[3].name,"time"));
-
     /* Now we can set stride length global vars */
-    TIME_STRIDE = dims[0].length * dims[1].length * dims[2].length;
-    LVL_STRIDE  = dims[0].length * dims[1].length;
-    LAT_STRIDE  = dims[0].length;
+    TIME_STRIDE = dims[DIM_ID_LON].length * dims[DIM_ID_LAT].length * dims[DIM_ID_LVL].length;
+    LVL_STRIDE  = dims[DIM_ID_LON].length * dims[DIM_ID_LAT].length;
+    LAT_STRIDE  = dims[DIM_ID_LON].length;
 
     /* Determine if the next file is the correct file for interpolation */
     ___nc_open(FILE_NEXT, &file_id_next);

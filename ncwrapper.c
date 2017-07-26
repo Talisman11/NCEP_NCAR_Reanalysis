@@ -4,7 +4,6 @@
 #include <string.h>
 #include <netcdf.h>
 
-
 #include "ncwrapper.h"
 
 extern char input_dir[];
@@ -30,6 +29,199 @@ int retval;
 int disable_clobber = 0;
 int enable_verbose = 0;
 int create_mask = NC_SHARE|NC_NETCDF4|NC_CLASSIC_MODEL;
+
+char*  ___nc_type(int nc_type) {
+	switch (nc_type) {
+		case NC_BYTE:
+			return "NC_BYTE";
+		case NC_UBYTE:
+			return "NC_UBYTE";
+		case NC_CHAR:
+			return "NC_CHAR";
+		case NC_SHORT:
+			return "NC_SHORT";
+		case NC_USHORT:
+			return "NC_USHORT";
+		case NC_INT:
+			return "NC_INT";
+		case NC_UINT:
+			return "NC_UINT";
+		case NC_INT64:
+			return "NC_INT64";
+		case NC_UINT64:
+			return "NC_UINT64";
+		case NC_FLOAT:
+			return "NC_FLOAT";
+		case NC_DOUBLE:
+			return "NC_DOUBLE";
+		case NC_STRING:
+			return "NC_STRING";
+		default:
+			return "TYPE_ERR";
+	}
+}
+
+void ___nc_open(char* file_name, int* file_handle) {
+	if ((retval = nc_open(file_name, NC_NOWRITE, file_handle)))
+    	NC_ERR(retval);
+}
+
+void ___nc_create(char* file_name, int* file_handle) {
+	/* -d flag ENABLES clobbering !(disable_clobber = 1) = 0 -> bit not set */
+	if (disable_clobber)
+		create_mask = create_mask | NC_NOCLOBBER;
+
+	/* Create netCDF4-4 classic model to match original NCAR/NCEP format of .nc files */
+	if ((retval = nc_create(file_name, create_mask, file_handle)))
+		NC_ERR(retval);
+
+	/* Has no effect? */
+	if ((retval = nc_set_fill(*file_handle, NC_NOFILL, NULL)))
+		NC_ERR(retval);
+}
+
+void ___nc_def_dim(int file_handle, Dimension dim) {
+	if ((retval = nc_def_dim(file_handle, dim.name, dim.length, &dim.id)))
+		NC_ERR(retval);
+}
+
+void ___nc_def_var(int file_handle, Variable var) {
+	if ((retval = nc_def_var(file_handle, var.name, var.type, var.num_dims, var.dim_ids, &var.id)))
+		NC_ERR(retval);
+}
+
+void ___nc_def_var_chunking(int ncid, int varid, const size_t *chunksizesp) {
+	if ((retval = nc_def_var_chunking(ncid, varid, NC_CHUNKED, chunksizesp)))
+		NC_ERR(retval);
+}
+
+void ___nc_def_var_deflate(int ncid, int varid) {
+	/* Variable deflation with shuffle = 1, deflate = 1, at level 2 */
+	if ((retval = nc_def_var_deflate(ncid, varid, 1, 1, 2))) 
+		NC_ERR(retval)
+}
+
+void ___nc_put_var_array(int file_handle, Variable var) {
+	switch(var.type) {
+		case NC_FLOAT:
+			retval = nc_put_var_float(file_handle, var.id, var.data);
+			break;
+		case NC_DOUBLE:
+			retval = nc_put_var_double(file_handle, var.id, var.data);
+			break;
+		default:
+			retval = nc_put_var(file_handle, var.id, var.data);
+	}
+
+	if (retval) NC_ERR(retval);
+}
+
+void ___nc_inq_dim(int file_handle, int id, Dimension* dim) {
+	if ((retval = nc_inq_dim(file_handle, id, dim->name, &dim->length))) 
+		NC_ERR(retval);
+
+	dim->id = id;
+	if (str_eq(dim->name, "time")) 
+		DIM_ID_TIME = id;
+	if (str_eq(dim->name, "level"))
+		DIM_ID_LVL = id;
+	if (str_eq(dim->name, "lat"))
+		DIM_ID_LAT = id;
+	if (str_eq(dim->name, "lon"))
+		DIM_ID_LON = id;
+
+	if (enable_verbose)
+    	printf("\tName: %s\t ID: %d\t Length: %lu\n", dim->name, dim->id, dim->length);
+}
+
+void ___nc_inq_att(int file_handle, int var_id, int num_attrs) {
+	char att_name[NC_MAX_NAME + 1];
+	nc_type att_type;
+	size_t att_length; 
+
+	printf("\tAttribute Information: (name, att_num, nc_type, length)\n");
+	for (int att_num = 0; att_num < num_attrs; att_num++) {
+		if ((retval = nc_inq_attname(file_handle, var_id, att_num, att_name)))
+			NC_ERR(retval);
+
+		if ((retval = nc_inq_att(file_handle, var_id, att_name, &att_type, &att_length)))
+			NC_ERR(retval);	
+
+		/* Double indent, with fixed length padding, in format of: (att_name, att_num, att_type, att_length)
+		 * %-*s -> string followed by * spaces for left align
+		 * %*s 	-> string preceded by * spaces for right align */
+		printf("\t\t %-*s %d\t %d\t %lu\n", ATTR_PAD, att_name, att_num, att_type, att_length);
+
+	}	
+}
+
+void ___nc_inq_var(int file_handle, int id, Variable* var, Dimension* dims) {
+	if((retval = nc_inq_var(file_handle, id, var->name, &var->type, &var->num_dims, var->dim_ids, &var->num_attrs)))
+		NC_ERR(retval);
+
+	// probably needs brackets lol
+	var->id = id;
+	if (str_eq(var->name, "time"))
+		VAR_ID_TIME = id;
+	else if (str_eq(var->name, "level"))
+		VAR_ID_LVL = id;
+	else if (str_eq(var->name, "lat"))
+		VAR_ID_LAT = id;
+	else if (str_eq(var->name, "lon"))
+		VAR_ID_LON = id;
+	else
+		VAR_ID_SPECIAL = id;
+
+	if (enable_verbose) {
+	    printf("\tName: %s\t ID: %d\t netCDF_type: %s\t Num_dims: %d\t Num_attrs: %d\n", 
+	    	var->name, id, ___nc_type(var->type), var->num_dims, var->num_attrs);
+
+	    for (int i = 0; i < var->num_dims; i++) {
+	    	printf("\tDim_id[%d] = %d (%s)\n", i, var->dim_ids[i], dims[var->dim_ids[i]].name);
+	    }
+
+	    // Display attribute data
+		___nc_inq_att(file_handle, id, var->num_attrs);
+	}
+}
+
+void ___nc_get_var_array(int file_handle, int id, Variable* var, Dimension* dims) {
+	size_t starts[var->num_dims];
+	size_t counts[var->num_dims];
+	var->length = 1;
+
+	/* We want to grab all the data in each dimension from [0 - dim_length). Number of elements to read == max_size (hence multiplication) */
+	for (int i = 0; i < var->num_dims; i++) {
+		starts[i] 	= 0; 
+		counts[i] 	= dims[var->dim_ids[i]].length; 
+		var->length 	*= dims[var->dim_ids[i]].length;
+	}
+
+	/* Use appropriate nc_get_vara() functions to access*/
+	switch(var->type) {
+		case NC_FLOAT:
+			var->data = malloc(sizeof(float) * var->length);
+			retval = nc_get_vara_float(file_handle, id, starts, counts, (float *) var->data);
+			break;
+		default: // likely NC_DOUBLE. If not NC_DOUBLE, then some other type.. but never happened yet
+			var->data = malloc(sizeof(double) * var->length);
+			retval = nc_get_vara_double(file_handle, id, starts, counts,  (double *) var->data);
+	}
+
+	if (retval)	NC_ERR(retval);
+
+	if (enable_verbose) 
+		printf("\tPopulated array - ID: %d Variable: %s Type: %s Size: %lu, \n", var->id, var->name, ___nc_type(var->type), var->length);
+}
+
+size_t ___access_nc_array(size_t time_idx, size_t lvl_idx, size_t lat_idx, size_t lon_idx) {
+	return (TIME_STRIDE * time_idx) + (LVL_STRIDE * lvl_idx) + (LAT_STRIDE * lat_idx) + lon_idx;
+}
+
+
+int str_eq(char* test, const char* target) {
+	return strcmp(test, target) == 0;
+}
 
 int process_arguments(int argc, char* argv[]) {
 	int opt;
@@ -91,9 +283,7 @@ int process_arguments(int argc, char* argv[]) {
     return 0;
 }
 
-/* Verify file is not . or .. directory, does not contain suffix or prefix, and is indeed a .nc file */
 int invalid_file(char* name) {
-
     if (!(strcmp(name, ".")) || !strcmp(name, "..")) {
         return 1;
     }
@@ -111,7 +301,6 @@ int invalid_file(char* name) {
     	
     return 0;
 }
-
 
 void concat_names(struct dirent *dir_entry_cur, struct dirent *dir_entry_next) {
 
@@ -133,202 +322,6 @@ void concat_names(struct dirent *dir_entry_cur, struct dirent *dir_entry_next) {
         printf("Input_1 FILE_CUR:  %s\n", FILE_CUR);
         printf("Input_2 FILE_NEXT: %s\n", FILE_NEXT);
         printf("Output  COPY:      %s\n", COPY);
-           
-}
-
-char*  ___nc_type(int nc_type) {
-	switch (nc_type) {
-		case NC_BYTE:
-			return "NC_BYTE";
-		case NC_UBYTE:
-			return "NC_UBYTE";
-		case NC_CHAR:
-			return "NC_CHAR";
-		case NC_SHORT:
-			return "NC_SHORT";
-		case NC_USHORT:
-			return "NC_USHORT";
-		case NC_INT:
-			return "NC_INT";
-		case NC_UINT:
-			return "NC_UINT";
-		case NC_INT64:
-			return "NC_INT64";
-		case NC_UINT64:
-			return "NC_UINT64";
-		case NC_FLOAT:
-			return "NC_FLOAT";
-		case NC_DOUBLE:
-			return "NC_DOUBLE";
-		case NC_STRING:
-			return "NC_STRING";
-		default:
-			return "TYPE_ERR";
-	}
-}
-
-void ___nc_open(char* file_name, int* file_handle) {
-	if ((retval = nc_open(file_name, NC_NOWRITE, file_handle)))
-    	NC_ERR(retval);
-}
-
-void ___nc_create(char* file_name, int* file_handle) {
-	/* -d flag ENABLES clobbering !(disable_clobber = 1) = 0 -> bit not set */
-	if (disable_clobber)
-		create_mask = create_mask | NC_NOCLOBBER;
-
-
-	/* Create netCDF4-4 classic model to match original NCAR/NCEP format of .nc files */
-	if ((retval = nc_create(file_name, create_mask, file_handle)))
-		NC_ERR(retval);
-
-	/* Has no effect? */
-	if ((retval = nc_set_fill(*file_handle, NC_NOFILL, NULL)))
-		NC_ERR(retval);
-}
-
-void ___nc_def_dim(int file_handle, Dimension dim) {
-	if ((retval = nc_def_dim(file_handle, dim.name, dim.length, &dim.id)))
-		NC_ERR(retval);
-}
-
-void ___nc_def_var(int file_handle, Variable var) {
-	if ((retval = nc_def_var(file_handle, var.name, var.type, var.num_dims, var.dim_ids, &var.id)))
-		NC_ERR(retval);
-}
-
-void ___nc_def_var_chunking(int ncid, int varid, const size_t *chunksizesp) {
-	if ((retval = nc_def_var_chunking(ncid, varid, NC_CHUNKED, chunksizesp)))
-		NC_ERR(retval);
-}
-
-void ___nc_def_var_deflate(int ncid, int varid) {
-	/* Variable deflation with shuffle = 1, deflate = 1, at level 2 */
-	if ((retval = nc_def_var_deflate(ncid, varid, 1, 1, 2))) 
-		NC_ERR(retval)
-}
-
-void variable_compression(int ncid, int timeid, const size_t* time_chunks, int specialid, const size_t* special_chunks) {
-	___nc_def_var_chunking(ncid, timeid, time_chunks);
-	___nc_def_var_chunking(ncid, specialid, special_chunks);
-
-	___nc_def_var_deflate(ncid, specialid);
-}
-
-void ___nc_put_var_array(int file_handle, Variable var) {
-	switch(var.type) {
-		case NC_FLOAT:
-			retval = nc_put_var_float(file_handle, var.id, var.data);
-			break;
-		case NC_DOUBLE:
-			retval = nc_put_var_double(file_handle, var.id, var.data);
-			break;
-		default:
-			retval = nc_put_var(file_handle, var.id, var.data);
-	}
-
-	if (retval) NC_ERR(retval);
-
-}
-
-void ___nc_inq_dim(int file_handle, int id, Dimension* dim) {
-	if ((retval = nc_inq_dim(file_handle, id, dim->name, &dim->length))) 
-		NC_ERR(retval);
-
-	dim->id = id;
-	if (str_eq(dim->name, "time")) 
-		DIM_ID_TIME = id;
-	if (str_eq(dim->name, "level"))
-		DIM_ID_LVL = id;
-	if (str_eq(dim->name, "lat"))
-		DIM_ID_LAT = id;
-	if (str_eq(dim->name, "lon"))
-		DIM_ID_LON = id;
-
-	if (enable_verbose)
-    	printf("\tName: %s\t ID: %d\t Length: %lu\n", dim->name, dim->id, dim->length);
-}
-
-void ___nc_inq_att(int file_handle, int var_id, int num_attrs) {
-	char att_name[NC_MAX_NAME + 1];
-	nc_type att_type;
-	size_t att_length; 
-
-	printf("\tAttribute Information: (name, att_num, nc_type, length)\n");
-	for (int att_num = 0; att_num < num_attrs; att_num++) {
-		if ((retval = nc_inq_attname(file_handle, var_id, att_num, att_name)))
-			NC_ERR(retval);
-
-		if ((retval = nc_inq_att(file_handle, var_id, att_name, &att_type, &att_length)))
-			NC_ERR(retval);	
-
-		/* Double indent, with fixed length padding, in format of: (att_name, att_num, att_type, att_length)
-		 * %-*s -> string followed by * spaces for left align
-		 * %*s 	-> string preceded by * spaces for right align */
-		printf("\t\t %-*s %d\t %d\t %lu\n", ATTR_PAD, att_name, att_num, att_type, att_length);
-
-	}
-	
-}
-
-void ___nc_inq_var(int file_handle, int id, Variable* var, Dimension* dims) {
-	if((retval = nc_inq_var(file_handle, id, var->name, &var->type, &var->num_dims, var->dim_ids, &var->num_attrs)))
-		NC_ERR(retval);
-
-	// probably needs brackets lol
-	var->id = id;
-	if (str_eq(var->name, "time"))
-		VAR_ID_TIME = id;
-	else if (str_eq(var->name, "level"))
-		VAR_ID_LVL = id;
-	else if (str_eq(var->name, "lat"))
-		VAR_ID_LAT = id;
-	else if (str_eq(var->name, "lon"))
-		VAR_ID_LON = id;
-	else
-		VAR_ID_SPECIAL = id;
-
-	if (enable_verbose) {
-	    printf("\tName: %s\t ID: %d\t netCDF_type: %s\t Num_dims: %d\t Num_attrs: %d\n", 
-	    	var->name, id, ___nc_type(var->type), var->num_dims, var->num_attrs);
-
-	    for (int i = 0; i < var->num_dims; i++) {
-	    	printf("\tDim_id[%d] = %d (%s)\n", i, var->dim_ids[i], dims[var->dim_ids[i]].name);
-	    }
-
-	    // Display attribute data
-		___nc_inq_att(file_handle, id, var->num_attrs);
-	}
-
-}
-
-void ___nc_get_var_array(int file_handle, int id, Variable* var, Dimension* dims) {
-	size_t starts[var->num_dims];
-	size_t counts[var->num_dims];
-	var->length = 1;
-
-	/* We want to grab all the data in each dimension from [0 - dim_length). Number of elements to read == max_size (hence multiplication) */
-	for (int i = 0; i < var->num_dims; i++) {
-		starts[i] 	= 0; 
-		counts[i] 	= dims[var->dim_ids[i]].length; 
-		var->length 	*= dims[var->dim_ids[i]].length;
-	}
-
-	/* Use appropriate nc_get_vara() functions to access*/
-	switch(var->type) {
-		case NC_FLOAT:
-			var->data = malloc(sizeof(float) * var->length);
-			retval = nc_get_vara_float(file_handle, id, starts, counts, (float *) var->data);
-			break;
-		default: // likely NC_DOUBLE. If not NC_DOUBLE, then some other type.. but never happened yet
-			var->data = malloc(sizeof(double) * var->length);
-			retval = nc_get_vara_double(file_handle, id, starts, counts,  (double *) var->data);
-	}
-
-	if (retval)	NC_ERR(retval);
-
-	if (enable_verbose) 
-		printf("\tPopulated array - ID: %d Variable: %s Type: %s Size: %lu, \n", var->id, var->name, ___nc_type(var->type), var->length);
 }
 
 int verify_next_file_variable(int copy, int next, Variable* var, Variable* var_next, Dimension* dims) {
@@ -358,8 +351,17 @@ int verify_next_file_variable(int copy, int next, Variable* var, Variable* var_n
 	return 0;
 }
 
-void skeleton_variable_fill(int copy, int num_vars, Variable* vars, Dimension time_interp) {
+void variable_compression(int ncid, int timeid, const size_t* time_chunks, int specialid, const size_t* special_chunks) {
+	___nc_def_var_chunking(ncid, timeid, time_chunks);
+	___nc_def_var_chunking(ncid, specialid, special_chunks);
 
+	___nc_def_var_deflate(ncid, specialid);
+}
+
+size_t time_dimension_adjust(size_t original_length) {
+	return original_length * NUM_GRAINS;
+}
+void skeleton_variable_fill(int copy, int num_vars, Variable* vars, Dimension time_interp) {
 	for (int i = 0; i < num_vars; i++) {
 		if (i != VAR_ID_TIME && i != VAR_ID_SPECIAL) {
 			nc_put_var_float(copy, vars[i].id, vars[i].data);
@@ -379,12 +381,6 @@ void skeleton_variable_fill(int copy, int num_vars, Variable* vars, Dimension ti
 	}
 
 	nc_put_var_double(copy, VAR_ID_TIME, time_new);
-
-
-}
-
-size_t ___access_nc_array(size_t time_idx, size_t lvl_idx, size_t lat_idx, size_t lon_idx) {
-	return (TIME_STRIDE * time_idx) + (LVL_STRIDE * lvl_idx) + (LAT_STRIDE * lat_idx) + lon_idx;
 }
 
 void temporal_interpolate(int copy, int next, Variable* orig, Variable* interp, Variable* var_next, Dimension* dims) {
@@ -414,17 +410,25 @@ void temporal_interpolate(int copy, int next, Variable* orig, Variable* interp, 
 	float* next_data = var_next->data;
 
 	/* {2010} [Cube], [Cube], ..., [Cube_n] {2011} [Cube_1], [Cube_2], ..., [Cube_n] */
-	for (time = 0; time < dims[orig->dim_ids[0]].length - 1; time++) {
+	for (time = 0; time < dims[DIM_ID_TIME].length; time++) {
 		for (grain = 0; grain < NUM_GRAINS; grain++) {
-			for (lvl = 0; lvl < dims[orig->dim_ids[1]].length; lvl++) {
-				for (lat = 0; lat < dims[orig->dim_ids[2]].length; lat++) {
-					for (lon = 0; lon < dims[orig->dim_ids[3]].length; lon++) {
+			for (lvl = 0; lvl < dims[DIM_ID_LVL].length; lvl++) {
+				for (lat = 0; lat < dims[DIM_ID_LAT].length; lat++) {
+					for (lon = 0; lon < dims[DIM_ID_LON].length; lon++) {
 						x_idx = ___access_nc_array(time, lvl, lat, lon);
-						y_idx = ___access_nc_array(time + 1, lvl, lat, lon);
+						
+						/* Shoudl take else branch by default */
+						if (time == dims[DIM_ID_TIME].length - 1) {
+							y_idx = ___access_nc_array(0, lvl, lat, lon);
+							m = next_data[y_idx] - src[x_idx];
+						} else {
+							y_idx = ___access_nc_array(time + 1, lvl, lat, lon);
+							m = src[y_idx] - src[x_idx];
+						}
+
+
 
 						interp_idx = ___access_nc_array(0, lvl, lat, lon); // only doing one cube at a time. Each new grain / time replaces the current cube;
-
-						m = src[y_idx] - src[x_idx];
 						dst[interp_idx] = m*((float) grain / (float) NUM_GRAINS) + src[x_idx];
 
 						/* Print out debug level each grain */
@@ -444,36 +448,32 @@ void temporal_interpolate(int copy, int next, Variable* orig, Variable* interp, 
 	}
 
 	/* Time to do final interpolation between last value of current file and first value of next file */
-	for (; time < dims[orig->dim_ids[0]].length; time++) {
-		for (grain = 0; grain < NUM_GRAINS; grain++) {
-			for (lvl = 0; lvl < dims[orig->dim_ids[1]].length; lvl++) {
-				for (lat = 0; lat < dims[orig->dim_ids[2]].length; lat++) {
-					for (lon = 0; lon < dims[orig->dim_ids[3]].length; lon++) {
-						x_idx = ___access_nc_array(time, lvl, lat, lon);
-						y_idx = ___access_nc_array(0, lvl, lat, lon); // only access the first (and only) Time row from var_next
+	// for (; time < dims[orig->dim_ids[0]].length; time++) {
+	// 	for (grain = 0; grain < NUM_GRAINS; grain++) {
+	// 		for (lvl = 0; lvl < dims[orig->dim_ids[1]].length; lvl++) {
+	// 			for (lat = 0; lat < dims[orig->dim_ids[2]].length; lat++) {
+	// 				for (lon = 0; lon < dims[orig->dim_ids[3]].length; lon++) {
+	// 					x_idx = ___access_nc_array(time, lvl, lat, lon);
+	// 					y_idx = ___access_nc_array(0, lvl, lat, lon); // only access the first (and only) Time row from var_next
 
-						interp_idx = ___access_nc_array(0, lvl, lat, lon); // same value; but separated for clarity
+	// 					interp_idx = ___access_nc_array(0, lvl, lat, lon); // same value; but separated for clarity
 
-						m = next_data[y_idx] - src[x_idx];
-						dst[interp_idx] = m*((float) grain / (float) NUM_GRAINS) + src[x_idx];
+	// 					m = next_data[y_idx] - src[x_idx];
+	// 					dst[interp_idx] = m*((float) grain / (float) NUM_GRAINS) + src[x_idx];
 
-					}
-				}
-			}
+	// 				}
+	// 			}
+	// 		}
 
 
-			starts[0] = NUM_GRAINS * time + grain;
+	// 		starts[0] = NUM_GRAINS * time + grain;
 
-			if ((retval = nc_put_vara_float(copy, interp->id, starts, counts, dst)))
-				NC_ERR(retval);
-		}
-	}
-
+	// 		if ((retval = nc_put_vara_float(copy, interp->id, starts, counts, dst)))
+	// 			NC_ERR(retval);
+	// 	}
+	// }
 }
 
-size_t time_dimension_adjust(size_t original_length) {
-	return original_length * NUM_GRAINS;
-}
 
 void clean_up(int num_vars, Variable* vars, Variable interp, Dimension* dims) {
     for (int i = 0; i < num_vars; i++) {
@@ -485,18 +485,3 @@ void clean_up(int num_vars, Variable* vars, Variable interp, Dimension* dims) {
 	free(interp.data);
 }
 
-
-void timer_start(clock_t* start) {
-	*start = clock();
-}
-
-void timer_end(clock_t* start, clock_t* end) {
-	*end = clock() - *start;
-
-	int msec = *end * 1000 / CLOCKS_PER_SEC;
-	printf("Time: %d seconds %d milliseconds", msec/1000, msec%1000);
-}
-
-int str_eq(char* test, const char* target) {
-	return strcmp(test, target) == 0;
-}
