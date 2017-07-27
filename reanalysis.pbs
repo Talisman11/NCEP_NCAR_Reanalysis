@@ -5,7 +5,7 @@
 #PBS -l nodes=1:ppn=1
 
 ### set the wallclock time
-#PBS -l walltime=01:00:00
+#PBS -l walltime=06:00:00
 
 ### set the job name
 #PBS -N NCAR_Reanalysis
@@ -53,4 +53,4 @@
 ### NOTE: (the "in" file must exist for input)
 
 cd Reanalysis/
-aprun -n 1 ./reanalysis -t 90 -i ../scratch/ncar_files/pressure/ -o ../scratch/ncar_files/pressure_interpolated/ -p interp_ -s 90 -v
+aprun -n 1 ./reanalysis -t 15 -i ../scratch/ncar_files/pressure/ -o ../scratch/ncar_files/pressure_interpolated/ -p interp_ -s _15 -v
