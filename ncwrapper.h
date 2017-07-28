@@ -1,14 +1,18 @@
 #ifndef __NCWRAPPER_H_
 #define __NCWRAPPER_H_
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <assert.h>
 #include <getopt.h>
+#include <string.h>
 #include <time.h>
 #include <dirent.h>
+#include <netcdf.h>
 
-#define ATTR_PAD 30
-#define DAILY_4X 6.0 // hours between intervals in a day
+#define ATTR_PAD 30 // Placeholder number for printing out attributes
+#define DAILY_4X 6.0 // Number of hours in each interval per day
 
 #define NC_ERR(err_msg) { printf("File: %s Line: %d - NetCDF Error: %s\n", __FILE__, __LINE__, nc_strerror(err_msg)); exit(EXIT_FAILURE); }
 #define ERR(err_no) { printf("File: %s Line: %d - C Error: %s\n", __FILE__, __LINE__, strerror(err_no)); exit(EXIT_FAILURE); }
@@ -22,7 +26,7 @@ typedef struct Variable {
 	int num_dims;					// Number of dimensions
 	int dim_ids[NC_MAX_VAR_DIMS];	// Array of Dimension IDs
 
-	size_t length;					// Number of values = dim_id[0].length * dim_id[1].length * ... * dim_id[n-1].length
+	size_t length;					// Length := dim_id[0].length * dim_id[1].length * ... * dim_id[n-1].length
 	void* data;						// Corresponding array of aforementioned length
 } Variable;
 
@@ -54,9 +58,6 @@ void ___nc_def_var_chunking(int ncid, int varid, const size_t* chunksizesp);
 /* Enables shuffling and deflation at level 2 */
 void ___nc_def_var_deflate(int ncid, int varid);
 
-/* Passes desired variables to compression functions */
-void variable_compression(int ncid, int timeid, const size_t* time_chunks, int specialid, const size_t* special_chunks);
-
 /* Print info about the dimension and store into struct Dimension */
 void ___nc_inq_dim(int ncid, int id, Dimension* dim);
 
@@ -87,13 +88,22 @@ void concat_names(struct dirent* dir_entry_cur, struct dirent* dir_entry_next);
 /* Ensure the Variable names of the files are the same to avoid contaminating interpolation data */
 int verify_next_file_variable(int copy, int next, Variable* var, Variable* var_next, Dimension* dims);
 
+/* Passes desired variables to compression functions */
+void variable_compression(int ncid, int timeid, const size_t* time_chunks, int specialid, const size_t* special_chunks);
+
 /* Abstracted calculation to account for new Time dimension length */
 size_t time_dimension_adjust(size_t original_length);
 
 /* Write Time, Level, Lat, Lon values for new file (same values except for Time dim) */
 void skeleton_variable_fill(int copy, int num_vars, Variable* vars, Dimension time_interp);
 
-/* Perform interpolation for the desired variable */
+/* Perform interpolation for the desired variable 
+ * copy 	- file handle of new interpolated file 
+ * next 	- file handle of NetCDF file that is (intended to be) the following year 
+ * var 		- pointer to struct holding data of our current input file 
+ * interp 	- pointer to data for our interpolated Variable 
+ * var_next - pointer to data of the next input file 
+ * dims 	- pointer to array of struct Dimensions */
 void temporal_interpolate(int copy, int next, Variable* var, Variable* interp, Variable* var_next, Dimension* dims);
 
 /* Frees memory for Variables and Dimensions allocated of input file, and the memory for the interpolated variable*/

@@ -1,9 +1,3 @@
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <netcdf.h>
-
 #include "ncwrapper.h"
 
 extern char input_dir[];
@@ -96,7 +90,8 @@ void ___nc_def_var_chunking(int ncid, int varid, const size_t *chunksizesp) {
 }
 
 void ___nc_def_var_deflate(int ncid, int varid) {
-	/* Variable deflation with shuffle = 1, deflate = 1, at level 2 */
+	/* Variable deflation with shuffle = 1, deflate = 1, at level 2. 
+	 * Other levels take longer for variable and insignificant degrees of compression */
 	if ((retval = nc_def_var_deflate(ncid, varid, 1, 1, 2))) 
 		NC_ERR(retval)
 }
@@ -159,7 +154,6 @@ void ___nc_inq_var(int file_handle, int id, Variable* var, Dimension* dims) {
 	if((retval = nc_inq_var(file_handle, id, var->name, &var->type, &var->num_dims, var->dim_ids, &var->num_attrs)))
 		NC_ERR(retval);
 
-	// probably needs brackets lol
 	var->id = id;
 	if (str_eq(var->name, "time"))
 		VAR_ID_TIME = id;
@@ -172,6 +166,7 @@ void ___nc_inq_var(int file_handle, int id, Variable* var, Dimension* dims) {
 	else
 		VAR_ID_SPECIAL = id;
 
+    /* Output attribute data */
 	if (enable_verbose) {
 	    printf("\tName: %s\t ID: %d\t netCDF_type: %s\t Num_dims: %d\t Num_attrs: %d\n", 
 	    	var->name, id, ___nc_type(var->type), var->num_dims, var->num_attrs);
@@ -180,7 +175,6 @@ void ___nc_inq_var(int file_handle, int id, Variable* var, Dimension* dims) {
 	    	printf("\tDim_id[%d] = %d (%s)\n", i, var->dim_ids[i], dims[var->dim_ids[i]].name);
 	    }
 
-	    // Display attribute data
 		___nc_inq_att(file_handle, id, var->num_attrs);
 	}
 }
@@ -203,7 +197,7 @@ void ___nc_get_var_array(int file_handle, int id, Variable* var, Dimension* dims
 			var->data = malloc(sizeof(float) * var->length);
 			retval = nc_get_vara_float(file_handle, id, starts, counts, (float *) var->data);
 			break;
-		default: // likely NC_DOUBLE. If not NC_DOUBLE, then some other type.. but never happened yet
+		default: // Likely NC_DOUBLE. If not NC_DOUBLE, then some other type.. but never happened yet.
 			var->data = malloc(sizeof(double) * var->length);
 			retval = nc_get_vara_double(file_handle, id, starts, counts,  (double *) var->data);
 	}
@@ -284,7 +278,7 @@ int process_arguments(int argc, char* argv[]) {
 }
 
 int invalid_file(char* name) {
-    if (!(strcmp(name, ".")) || !strcmp(name, "..")) {
+	if (!(strcmp(name, ".")) || !strcmp(name, "..")) {
         return 1;
     }
 
@@ -342,7 +336,7 @@ int verify_next_file_variable(int copy, int next, Variable* var, Variable* var_n
 		starts[i] = 0; 
 		counts[i] = dims[var->dim_ids[i]].length;
 	}
-	counts[0] = 1; // Only want one "cube" or row of data from the Time dimension
+	counts[0] = 1; // We are only pulling the first Time cube of data from the next file for interp. 
 
 	/* Since the variables are the same, grab the same ID and put it into our var_next->data */
 	if ((retval = nc_get_vara_float(next, var->id, starts, counts, (float *) var_next->data)))
@@ -352,9 +346,11 @@ int verify_next_file_variable(int copy, int next, Variable* var, Variable* var_n
 }
 
 void variable_compression(int ncid, int timeid, const size_t* time_chunks, int specialid, const size_t* special_chunks) {
+	/* Set chunking for Time and Special variables in question. */
 	___nc_def_var_chunking(ncid, timeid, time_chunks);
 	___nc_def_var_chunking(ncid, specialid, special_chunks);
 
+	/* Set deflation for compression on the special Varaible. */
 	___nc_def_var_deflate(ncid, specialid);
 }
 
@@ -387,23 +383,14 @@ void temporal_interpolate(int copy, int next, Variable* orig, Variable* interp, 
 	size_t time, grain, lvl, lat, lon, x_idx, y_idx, interp_idx;
 	size_t starts[interp->num_dims];
 	size_t counts[interp->num_dims];
-	float m; // for slope
+	float m; // Slope variable. y = mx + b for linear interpolation
 
-	// Debugging code
-	// printf("var: name: %s id: %d num_dims %d length %lu\n", orig->name, orig->id, orig->num_dims, orig->length);
-	// for (int i = 0; i < orig->num_dims; i++) {
-	// 	printf("dim_ids[%d] = %d\n", i, orig->dim_ids[i]);
-	// }
-	// for (int i = 0; i < 4; i++) {
-	// 	printf("dim name: %s id: %d length: %lu\n", dims[i].name, dims[i].id, dims[i].length);
-	// }
-
-	// all dimensions run from [0, dim_length) except for Time, which is [0, 1)
+	/* All dimensions run from [0, dim_length) except for Time, which will be [0, 1) */
 	for (int i = 0; i < interp->num_dims; i++) {
 		starts[i] = 0; 
 		counts[i] = dims[interp->dim_ids[i]].length;
 	}
-	counts[0] = 1; // Time dimension we only want to do ONE count at a time
+	counts[0] = 1; // In the Time dimension, we only want to do ONE count at a time.
 
 	float* src = orig->data;
 	float* dst = (float *) interp->data;
@@ -417,7 +404,7 @@ void temporal_interpolate(int copy, int next, Variable* orig, Variable* interp, 
 					for (lon = 0; lon < dims[DIM_ID_LON].length; lon++) {
 						x_idx = ___access_nc_array(time, lvl, lat, lon);
 						
-						/* Shoudl take else branch by default */
+						/* Standard case is else branch. if branch has redundant calculation, but maintained for clarity */
 						if (time == dims[DIM_ID_TIME].length - 1) {
 							y_idx = ___access_nc_array(0, lvl, lat, lon);
 							m = next_data[y_idx] - src[x_idx];
@@ -426,16 +413,8 @@ void temporal_interpolate(int copy, int next, Variable* orig, Variable* interp, 
 							m = src[y_idx] - src[x_idx];
 						}
 
-
-
-						interp_idx = ___access_nc_array(0, lvl, lat, lon); // only doing one cube at a time. Each new grain / time replaces the current cube;
+						interp_idx = ___access_nc_array(0, lvl, lat, lon); // Only doing one cube at a time. Each new grain replaces the current cube.
 						dst[interp_idx] = m*((float) grain / (float) NUM_GRAINS) + src[x_idx];
-
-						/* Print out debug level each grain */
-						// if (grain == 0 && lvl == 0 && lat == 0 && lon == 0) {
-						// 	printf("[%lu][%lu][%lu][%lu][%lu] \t data[%lu] = %f \t interp[%lu] = %f \t data[%lu] = %f \n",
-						// 	time, grain, lvl, lat, lon, x_idx, src[x_idx], interp_idx, dst[interp_idx], y_idx, src[y_idx]);	
-						// }
 					}
 				}
 			}
@@ -446,34 +425,7 @@ void temporal_interpolate(int copy, int next, Variable* orig, Variable* interp, 
 				NC_ERR(retval);
 		}
 	}
-
-	/* Time to do final interpolation between last value of current file and first value of next file */
-	// for (; time < dims[orig->dim_ids[0]].length; time++) {
-	// 	for (grain = 0; grain < NUM_GRAINS; grain++) {
-	// 		for (lvl = 0; lvl < dims[orig->dim_ids[1]].length; lvl++) {
-	// 			for (lat = 0; lat < dims[orig->dim_ids[2]].length; lat++) {
-	// 				for (lon = 0; lon < dims[orig->dim_ids[3]].length; lon++) {
-	// 					x_idx = ___access_nc_array(time, lvl, lat, lon);
-	// 					y_idx = ___access_nc_array(0, lvl, lat, lon); // only access the first (and only) Time row from var_next
-
-	// 					interp_idx = ___access_nc_array(0, lvl, lat, lon); // same value; but separated for clarity
-
-	// 					m = next_data[y_idx] - src[x_idx];
-	// 					dst[interp_idx] = m*((float) grain / (float) NUM_GRAINS) + src[x_idx];
-
-	// 				}
-	// 			}
-	// 		}
-
-
-	// 		starts[0] = NUM_GRAINS * time + grain;
-
-	// 		if ((retval = nc_put_vara_float(copy, interp->id, starts, counts, dst)))
-	// 			NC_ERR(retval);
-	// 	}
-	// }
 }
-
 
 void clean_up(int num_vars, Variable* vars, Variable interp, Dimension* dims) {
     for (int i = 0; i < num_vars; i++) {
@@ -484,4 +436,3 @@ void clean_up(int num_vars, Variable* vars, Variable interp, Dimension* dims) {
 
 	free(interp.data);
 }
-

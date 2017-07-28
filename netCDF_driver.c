@@ -133,8 +133,10 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    // should do some error checking here
-    count = scandir(input_dir, &dir_list, NULL, alphasort);
+    if (-1 == (count = scandir(input_dir, &dir_list, NULL, alphasort))) {
+        printf("Failed to open directory.\n");
+        exit(1);
+    }
 
     /* Loop through and grab pairs of files. I.e. A1 A2 A3 B1 B2 goes:
      * [A1 A2] -> [A2 A3] -> [A3 B1] --SKIP!--> [B1 B2] <END> */
