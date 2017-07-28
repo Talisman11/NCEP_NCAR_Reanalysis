@@ -24,9 +24,9 @@ Execution Setup:
 
 Example execution:
 
-./reanalysis -t 90 -i ./ncar\_files/pressure/ -o ./ncar\_files/pressure\_interpolated/ -p interp -s \_90 -v -d
+./reanalysis -t 90 -i ../scratch/ncar\_files/pressure/ -o ../scratch/ncar\_files/pressure\_interpolated/ -p interp -s \_90 -v -d
 
-Runs the reanalysis program found in the current directory for granularity of 90 minutes from the pressure/ sub-subdirectory, outputting the files into the pressure\_interpolated/ sub-subdirectory, prefixing the files with string "interp" and suffixing them with "\_90", generating verbose output and disabling the clobbering (prevents program from overwriting any previously generated files with same prefix or suffix). Program usage requires -t and -i to be set; default output directory is the input directory (this can get messy after a few iterations; recommend to use GLOBUS or other file transfer to move the files out), with suffix ".copy".
+Runs the reanalysis program found in the current directory for granularity of 90 minutes from the pressure/ sub-subdirectory of the (outer) scratch/, outputting the files into the pressure\_interpolated/ , prefixing the files with string "interp" and suffixing them with "\_90", generating verbose output and disabling the clobbering (prevents program from overwriting any previously generated files with same prefix or suffix). Program usage requires -t and -i to be set; default output directory is the input directory (this can get messy after a few iterations; recommend to use GLOBUS or other file transfer to move the files out), with suffix ".copy".
 
 HDFView Setup (Optional - Requires HDFView to be installed on local machine):
 
