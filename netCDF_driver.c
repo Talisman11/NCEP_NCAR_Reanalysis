@@ -26,8 +26,8 @@ size_t TIME_STRIDE;
 size_t LVL_STRIDE;
 size_t LAT_STRIDE;
 
-const size_t SPECIAL_CHUNKS[] = {1, 1, 73, 144};
-const size_t TIME_CHUNK[] = {1};
+size_t SPECIAL_CHUNKS[4];
+size_t TIME_CHUNK[] = {1};
 
 int primary_function() {
     /* Declare local variables */
@@ -106,6 +106,10 @@ int primary_function() {
     }
 
     /* Add chunking for time and special variable, and shuffle and deflate for the special */
+    SPECIAL_CHUNKS[0] = NUM_GRAINS; // i.e. 360 / 15 minutes = 24 cubes, so use 24 for chunking
+    SPECIAL_CHUNKS[1] = dims[DIM_ID_LVL].length;
+    SPECIAL_CHUNKS[2] = dims[DIM_ID_LAT].length;
+    SPECIAL_CHUNKS[3] = dims[DIM_ID_LON].length;
     variable_compression(copy_id, VAR_ID_TIME, TIME_CHUNK, VAR_ID_SPECIAL, SPECIAL_CHUNKS);
 
     /* Declare we are done defining dims and vars */

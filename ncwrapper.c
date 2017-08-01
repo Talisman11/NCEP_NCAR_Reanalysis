@@ -289,7 +289,7 @@ int invalid_file(char* name) {
     }
 
     if (!strstr(name, ".nc")) {
-    	printf("File is not a NetCDF file\n");
+    	printf("Entry '%s' is not a NetCDF file\n", name);
         return 1;
     }
     	
