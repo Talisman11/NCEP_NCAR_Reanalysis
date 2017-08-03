@@ -88,6 +88,9 @@ void concat_names(struct dirent* dir_entry_cur, struct dirent* dir_entry_next);
 /* Ensure the Variable names of the files are the same to avoid contaminating interpolation data */
 int verify_next_file_variable(int copy, int next, Variable* var, Variable* var_next, Dimension* dims);
 
+/* Abstraction function for configuring the chunk sizes in the special variable */
+void configure_special_chunks(Dimension* dims, size_t* special_chunks);
+
 /* Passes desired variables to compression functions */
 void variable_compression(int ncid, int timeid, const size_t* time_chunks, int specialid, const size_t* special_chunks);
 

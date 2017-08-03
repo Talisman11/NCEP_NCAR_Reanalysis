@@ -20,9 +20,14 @@ extern int VAR_ID_TIME, VAR_ID_LVL, VAR_ID_LAT, VAR_ID_LON, VAR_ID_SPECIAL;
 extern int DIM_ID_TIME, DIM_ID_LVL, DIM_ID_LAT, DIM_ID_LON;
 
 int retval;
+int manual_chunk_level = 0;
 int disable_clobber = 0;
 int enable_verbose = 0;
 int create_mask = NC_SHARE|NC_NETCDF4|NC_CLASSIC_MODEL;
+
+extern size_t SPECIAL_CHUNKS[];
+const size_t CHUNK_STANDARD_YEAR[] = {1, 2, 4, 10}; // Multiples of 1460
+const size_t CHUNK_LEAP_YEAR[] = {1, 2, 4, 8}; // Multiples of 1464
 
 char*  ___nc_type(int nc_type) {
 	switch (nc_type) {
@@ -220,12 +225,15 @@ int str_eq(char* test, const char* target) {
 int process_arguments(int argc, char* argv[]) {
 	int opt;
 
-    while ((opt = getopt(argc, argv, "t:i:do:s:p:v")) != -1) {
+    while ((opt = getopt(argc, argv, "t:c:i:do:s:p:v")) != -1) {
         switch(opt) {
             case 't': /* Temporal Granularity (minutes). Affects NUM_GRAINS */
                 TEMPORAL_GRANULARITY = atoi(optarg);
                 NUM_GRAINS = 360 / TEMPORAL_GRANULARITY;
                 break;
+            case 'c':
+            	manual_chunk_level = atoi(optarg);
+            	break;
             case 'i': /* Input file directory */
                 strcpy(input_dir, optarg);
                 break;
@@ -255,6 +263,11 @@ int process_arguments(int argc, char* argv[]) {
     	printf("Error: Program requires a valid temporal granularity value that divides evenly into 360.\n");
     	return 1;
     }
+
+	if (manual_chunk_level < 0 || manual_chunk_level > 3) {
+		printf("Error: Manual chunk compression level requires a value of [0-3].\n");
+		return 1;
+	}
 
     /* Ensure a directory was actually specified */
     if (strlen(input_dir) == 0) {
@@ -345,7 +358,28 @@ int verify_next_file_variable(int copy, int next, Variable* var, Variable* var_n
 	return 0;
 }
 
+void configure_special_chunks(Dimension* dims, size_t* special_chunks) {
+	int chunk_multiplier;
+
+	if (dims[DIM_ID_TIME].length == 1460) {
+		chunk_multiplier = CHUNK_STANDARD_YEAR[manual_chunk_level];
+	} else if (dims[DIM_ID_TIME].length == 1464) {
+		chunk_multiplier = CHUNK_LEAP_YEAR[manual_chunk_level];
+	} else {
+		printf("File's time is not 1460 or 1464. Setting Chunk Multiplier to 1\n");
+		chunk_multiplier = CHUNK_STANDARD_YEAR[0];
+	}
+    SPECIAL_CHUNKS[0] = NUM_GRAINS * chunk_multiplier; // i.e. 360 / 15 minutes = 24 cubes, so use 24 for chunking
+    SPECIAL_CHUNKS[1] = dims[DIM_ID_LVL].length;
+    SPECIAL_CHUNKS[2] = dims[DIM_ID_LAT].length;
+    SPECIAL_CHUNKS[3] = dims[DIM_ID_LON].length;
+}
+
 void variable_compression(int ncid, int timeid, const size_t* time_chunks, int specialid, const size_t* special_chunks) {
+	for (int i = 0; i < 4; i++) {
+		printf("Special[%d] = %lu", i, special_chunks[i]);
+	}
+
 	/* Set chunking for Time and Special variables in question. */
 	___nc_def_var_chunking(ncid, timeid, time_chunks);
 	___nc_def_var_chunking(ncid, specialid, special_chunks);

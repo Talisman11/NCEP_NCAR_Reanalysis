@@ -106,10 +106,8 @@ int primary_function() {
     }
 
     /* Add chunking for time and special variable, and shuffle and deflate for the special */
-    SPECIAL_CHUNKS[0] = NUM_GRAINS; // i.e. 360 / 15 minutes = 24 cubes, so use 24 for chunking
-    SPECIAL_CHUNKS[1] = dims[DIM_ID_LVL].length;
-    SPECIAL_CHUNKS[2] = dims[DIM_ID_LAT].length;
-    SPECIAL_CHUNKS[3] = dims[DIM_ID_LON].length;
+    configure_special_chunks(dims, SPECIAL_CHUNKS);
+
     variable_compression(copy_id, VAR_ID_TIME, TIME_CHUNK, VAR_ID_SPECIAL, SPECIAL_CHUNKS);
 
     /* Declare we are done defining dims and vars */
@@ -133,7 +131,9 @@ int main(int argc, char *argv[]) {
     struct dirent **dir_list;
 
     if (process_arguments(argc, argv)) {
-        printf("Program usage:\n %s -t [temporal granularity] -i [input directory] -d [delete flag; no args] -o [output directory] -p [output FILE_CUR prefix] -s [output FILE_CUR suffix]\n", argv[0]);
+        printf("Program usage: %s\n", argv[0]); 
+        printf("\t-t [temporal granularity] -c [manual chunk compression level [0-3]] -i [input directory] -d [delete flag; no args]\n");
+        printf("\t-o [output directory] -p [output FILE_CUR prefix] -s [output FILE_CUR suffix] -v [verbose; no args]\n");
         exit(1);
     }
 
@@ -146,12 +146,12 @@ int main(int argc, char *argv[]) {
      * [A1 A2] -> [A2 A3] -> [A3 B1] --SKIP!--> [B1 B2] <END> */
     for (int i = 0; i < count - 1; i++) {
         if (invalid_file(dir_list[i]->d_name)) {
-            printf("Warning: '%s' invalid name or file type. Examining next pair.\n", dir_list[i]->d_name);
+            printf("Warning: '%s' invalid name, file type, or no pairable file. Examining next pair.\n", dir_list[i]->d_name);
             continue;
         }
 
         if (invalid_file(dir_list[i + 1]->d_name)) {
-            printf("Warning: '%s' invalid name or file type. Skipping pair entries.\n", dir_list[i++]->d_name);
+            printf("Warning: '%s' invalid name, file type, or no pairable file. Skipping pair entries.\n", dir_list[i++]->d_name);
             continue;
         }
 
