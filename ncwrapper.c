@@ -282,6 +282,8 @@ int process_arguments(int argc, char* argv[]) {
 
     printf("Program proceeding with:\n");
     printf("\tTemporal Granularity = %d minute slices => %d grains\n", TEMPORAL_GRANULARITY, NUM_GRAINS);
+    printf("\tDisable clobbering = %d\n", disable_clobber);
+    printf("\tManual chunk level = %d\n", manual_chunk_level);
     printf("\tInput directory = %s\n", input_dir);
     printf("\tOutput directory = %s\n", output_dir);
     printf("\tOutput file prefix = %s\n", prefix);
@@ -376,10 +378,6 @@ void configure_special_chunks(Dimension* dims, size_t* special_chunks) {
 }
 
 void variable_compression(int ncid, int timeid, const size_t* time_chunks, int specialid, const size_t* special_chunks) {
-	for (int i = 0; i < 4; i++) {
-		printf("Special[%d] = %lu", i, special_chunks[i]);
-	}
-
 	/* Set chunking for Time and Special variables in question. */
 	___nc_def_var_chunking(ncid, timeid, time_chunks);
 	___nc_def_var_chunking(ncid, specialid, special_chunks);
