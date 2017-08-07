@@ -132,7 +132,7 @@ int main(int argc, char *argv[]) {
 
     if (process_arguments(argc, argv)) {
         printf("Program usage: %s\n", argv[0]); 
-        printf("\t-t [temporal granularity] -c [manual chunk compression level [0-3]] -i [input directory] -d [delete flag; no args]\n");
+        printf("\t-t [temporal granularity] -i [input directory] -d [delete flag; no args]\n");
         printf("\t-o [output directory] -p [output FILE_CUR prefix] -s [output FILE_CUR suffix] -v [verbose; no args]\n");
         exit(1);
     }
