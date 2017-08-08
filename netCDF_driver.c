@@ -170,5 +170,7 @@ int main(int argc, char *argv[]) {
     }
     free(dir_list);
 
+    printf("Reanalysis program completed successfully.\n");
+
     return 0;
 }

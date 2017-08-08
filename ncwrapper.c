@@ -20,7 +20,6 @@ extern int VAR_ID_TIME, VAR_ID_LVL, VAR_ID_LAT, VAR_ID_LON, VAR_ID_SPECIAL;
 extern int DIM_ID_TIME, DIM_ID_LVL, DIM_ID_LAT, DIM_ID_LON;
 
 int retval;
-int manual_chunk_level = 0;
 int disable_clobber = 0;
 int enable_verbose = 0;
 int create_mask = NC_SHARE|NC_NETCDF4|NC_CLASSIC_MODEL;
@@ -66,7 +65,6 @@ void ___nc_open(char* file_name, int* file_handle) {
 }
 
 void ___nc_create(char* file_name, int* file_handle) {
-	/* -d flag ENABLES clobbering !(disable_clobber = 1) = 0 -> bit not set */
 	if (disable_clobber)
 		create_mask = create_mask | NC_NOCLOBBER;
 
@@ -261,11 +259,6 @@ int process_arguments(int argc, char* argv[]) {
     	return 1;
     }
 
-	if (manual_chunk_level < 0 || manual_chunk_level > 3) {
-		printf("Error: Manual chunk compression level requires a value of [0-3].\n");
-		return 1;
-	}
-
     /* Ensure a directory was actually specified */
     if (strlen(input_dir) == 0) {
     	printf("Error: Program requires an input directory.\n");
@@ -280,7 +273,6 @@ int process_arguments(int argc, char* argv[]) {
     printf("Program proceeding with:\n");
     printf("\tTemporal Granularity = %d minute slices => %d grains\n", TEMPORAL_GRANULARITY, NUM_GRAINS);
     printf("\tDisable clobbering = %d\n", disable_clobber);
-    printf("\tManual chunk level = %d\n", manual_chunk_level);
     printf("\tInput directory = %s\n", input_dir);
     printf("\tOutput directory = %s\n", output_dir);
     printf("\tOutput file prefix = %s\n", prefix);
@@ -294,9 +286,9 @@ int invalid_file(char* name) {
         return 1;
     }
 
-    if ((disable_clobber == 0) && 
-    	((strlen(suffix) > 0 && strstr(name, suffix)) || (strlen(prefix) > 0 && strstr(name, prefix)))) {
-    	printf("Presence of prefix or suffix in file indicates file already processed\n");
+    // We do not want to read in interpolated files. This case would happen if the output dir == input dir.
+    if (((strlen(suffix) > 0 && strstr(name, suffix)) || (strlen(prefix) > 0 && strstr(name, prefix)))) {
+    	printf("Presence of prefix or suffix in file indicates interpoalted file. Consider using -o to set output directory.\n");
         return 1;
     }
 
