@@ -1,6 +1,6 @@
 # NCEP/NCAR Reanalysis Temporal Interpolation Program
 
-A C program using HDF5/NetCDF4-C libraries to read in NCEP/NCAR Reanalysis data and perform temporal interpolation to output NetCDF files of finer granularity to better integrate the Reanalysis data with other NASA instruments and data. The NCEP/NCAR data is located at: https://www.esrl.noaa.gov/psd/data/gridded/data.ncep.reanalysis.html . 
+NCEP/NCAR has been collecting Reanalysis data since 1948 of various atmospheric variables across the Earth, stored in surface level (3D) or multilevel (4D) formats and is used by scientists around the world for research and analysis. Although the data is abundant, it is also coarse-grained in temporal and spatial senses, at 4x Daily (6 hour intervals) and 2.5 x 2.5 degree resolution. This program handles the temporal problem through linear interpolation on multilevel files, and is intended for usage on UIUC's Blue Waters, but is extensible to local machines and other supercomputing clusters given the correct setup.
 
 ## Input:
 
