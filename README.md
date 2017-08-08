@@ -1,4 +1,4 @@
-# Reanalysis
+# NCEP/NCAR Reanalysis Temporal Interpolation Program
 
 A C program using HDF5/NetCDF4-C libraries to read in NCEP/NCAR Reanalysis data and perform temporal interpolation to output NetCDF files of finer granularity to better integrate the Reanalysis data with other NASA instruments and data. The NCEP/NCAR data is located at: https://www.esrl.noaa.gov/psd/data/gridded/data.ncep.reanalysis.html . 
 
