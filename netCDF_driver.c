@@ -5,28 +5,28 @@
 
 #include "ncwrapper.h"
 
-char input_dir[128] = "";
-char output_dir[128] = "";
-char prefix[64] = "";
-char suffix[64] = ".copy";
+extern char input_dir[];
+extern char output_dir[];
+extern char prefix[];
+extern char suffix[];
 
-char FILE_CUR[256] = "";
-char FILE_NEXT[256] = "";
-char COPY[256] = "";
+extern char FILE_CUR[];
+extern char FILE_NEXT[];
+extern char COPY[];
 
-int NUM_GRAINS = -1;
-int TEMPORAL_GRANULARITY = -1;
+extern int NUM_GRAINS;
+extern int TEMPORAL_GRANULARITY;
 
 /* Special indexing variables */
-int VAR_ID_TIME, VAR_ID_LVL, VAR_ID_LAT, VAR_ID_LON, VAR_ID_SPECIAL;
-int DIM_ID_TIME, DIM_ID_LVL, DIM_ID_LAT, DIM_ID_LON;
+extern int VAR_ID_TIME, VAR_ID_LVL, VAR_ID_LAT, VAR_ID_LON, VAR_ID_SPECIAL;
+extern int DIM_ID_TIME, DIM_ID_LVL, DIM_ID_LAT, DIM_ID_LON;
 
 /* Stride lengths for array access */
-size_t TIME_STRIDE;
-size_t LVL_STRIDE;
-size_t LAT_STRIDE;
+extern size_t TIME_STRIDE;
+extern size_t LVL_STRIDE;
+extern size_t LAT_STRIDE;
 
-size_t SPECIAL_CHUNKS[4];
+extern size_t SPECIAL_CHUNKS[4];
 size_t TIME_CHUNK[] = {1};
 
 int primary_function() {
