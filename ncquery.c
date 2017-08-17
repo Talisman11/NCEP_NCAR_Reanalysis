@@ -1,5 +1,7 @@
 #include "ncwrapper.h"
 
+#define DIM_PAD 30
+
 int disable_clobber;
 int enable_verbose;
 int input_dir_flag;
@@ -30,60 +32,20 @@ extern size_t TIME_STRIDE;
 extern size_t LVL_STRIDE;
 extern size_t LAT_STRIDE;
 
+
+Variable *vars;
+Dimension *dims;
+
 size_t YEAR;
 char YEAR_S[5];
 
 size_t time_x, time_y, lvl_x, lvl_y, lat_x, lat_y, lon_x, lon_y;
 
 
+int file_id, num_vars, num_dims;
 
-int check_commands(char* input) {
-	int match_count;
-
-	/* Check for inputs */
-	if (str_eq(input, ":q\n")) {
-		printf("Received quit signal. Terminating.\n");
-		exit(EXIT_SUCCESS);
-	}
-
-	/* TODO: Print dialog regarding possible inputs and options*/
-	if (str_eq(input, "?\n") || str_eq(input, "help\n")) {
-		printf("Help Information:\n");
-		return 1;
-	}
-
-	// Print out the year, regardless of if sscanf() successful
-	if (strstr(input, "year")) {
-		if (1 == (match_count = sscanf(input, "year %lu", &YEAR))) {
-			snprintf(YEAR_S, 5, "%lu", YEAR);
-			printf("'YEAR_S' := %s\n", YEAR_S);
-		}
-		printf("'YEAR' := %lu\n", YEAR); 
-		return 1;
-	}
-
-	/* TODO: Output Time length and some values */
-	if (str_eq(input, "time\n")) {
-		printf("'TIME' := %lu length\n", 999);
-		return 1;
-	}
-
-	/* TODO: Output Level length and [index] -> [value] table */
-	if (str_eq(input, "level\n")) {
-		printf("'LEVEL' := %lu length\n", 999);
-		return 1;
-	}
-
-	return 0;
-}
-
-int extract_data(char* filename) {
-	int file_id, num_vars, num_dims;
-
-	Variable *vars;
-	Dimension *dims;
-
-
+int digest_file(char* filename) {
+    printf("Gathering data from: %s\n", filename);
 	___nc_open(filename, &file_id);
 
 	nc_inq(file_id, &num_dims, &num_vars, NULL, NULL);
@@ -107,19 +69,6 @@ int extract_data(char* filename) {
 	TIME_STRIDE = dims[DIM_ID_LON].length * dims[DIM_ID_LAT].length * dims[DIM_ID_LVL].length;
     LVL_STRIDE  = dims[DIM_ID_LON].length * dims[DIM_ID_LAT].length;
     LAT_STRIDE  = dims[DIM_ID_LON].length;
-
-    for (size_t time = time_x; time < time_y; time++) {
-    	for (size_t lvl = lvl_x; lvl < lvl_y; lvl++) {
-    		for (size_t lat = lat_x; lat < lat_y; lat++) {
-    			for (size_t lon = lon_x; lon < lon_y; lon++) {
-    				size_t index = ___access_nc_array(time, lvl, lat, lon);
-    				printf("file[%lu][%lu][%lu][%lu] = [%lu] = %f\n", time, lvl, lat, lon, index, 
-    					((float *)vars[VAR_ID_SPECIAL].data)[index]);
-    			}
-    		}
-    	}
-    }
-
 }
 
 int process_directory() {
@@ -133,17 +82,84 @@ int process_directory() {
     }	
 
     for (int i = 0; i < count; i++) {
-    	printf("YEAR: %lu, YEAR_S: %s\n", YEAR, YEAR_S);
-    	printf("In directory loop: year: %s nc: %s\n", strstr(dir_list[i]->d_name, YEAR_S), strstr(dir_list[i]->d_name, ".nc"));
     	if (strstr(dir_list[i]->d_name, YEAR_S) && strstr(dir_list[i]->d_name, ".nc")) {
     		
     		strcpy(cur_file_path, input_dir);
     		strcat(cur_file_path, dir_list[i]->d_name);
 
-    		extract_data(cur_file_path);
+			digest_file(cur_file_path);
+    		break; // only do the first file...
     	}
     }
 }
+
+int print_dimension_var(char* input, char* var_command, int var_id) {
+	if (str_eq(input, var_command) && var_id != -1) {
+		printf(":= %lu length\n", vars[var_id].length);
+
+		for (size_t i = 0; i < vars[var_id].length; var_id == VAR_ID_TIME ? i += 100 : i++) {
+			if (var_id == VAR_ID_TIME) {
+				printf("\t[%lu] \t= %f\n", i, ((double *) vars[var_id].data)[i]);
+			} else {
+				printf("\t[%lu] \t= %f\n", i, ((float *) vars[var_id].data)[i]);
+			}
+		}
+		return 1;
+	}
+	return 0;
+}
+
+int check_commands(char* input) {
+	int match_count;
+
+	/* Check for inputs */
+	if (str_eq(input, ":q\n")) {
+		printf("Received quit signal. Terminating.\n");
+		exit(EXIT_SUCCESS);
+	}
+
+	/* TODO: Print dialog regarding possible inputs and options*/
+	if (str_eq(input, "?\n") || str_eq(input, "help\n")) {
+		printf("Help Information:\n");
+		return 1;
+	}
+
+	// Print out the year, regardless of if sscanf() successful
+	if (strstr(input, "year")) {
+		if (1 == (match_count = sscanf(input, "year %lu", &YEAR))) {
+			snprintf(YEAR_S, 5, "%lu", YEAR); // Read into a string version as well
+			process_directory();
+		}
+		printf("'YEAR' := %lu\n", YEAR); 
+		return 1;
+	}
+
+	if (print_dimension_var(input, "time\n", VAR_ID_TIME) || print_dimension_var(input, "level\n", VAR_ID_LVL) || 
+		print_dimension_var(input, "lat\n", VAR_ID_LAT) || print_dimension_var(input, "lon\n", VAR_ID_LON)) {
+		return 1;
+	}
+
+	return 0;
+}
+
+int extract_data() {
+	size_t time, lvl, lat, lon, index;
+
+    float* var_data = vars[VAR_ID_SPECIAL].data;
+    for (time = time_x; time < time_y; time++) {
+    	for (lvl = lvl_x; lvl < lvl_y; lvl++) {
+    		for (lat = lat_x; lat < lat_y; lat++) {
+    			for (lon = lon_x; lon < lon_y; lon++) {
+    				index = ___access_nc_array(time, lvl, lat, lon);
+    				printf("%lu -> %s[%lu][%lu][%lu][%lu] = [%lu] = %f\n", 
+    					YEAR, vars[VAR_ID_SPECIAL].name, time, lvl, lat, lon, index, var_data[index]);
+    			}
+    		}
+    	}
+    }
+
+}
+
 
 int process_request() {
 	if (input_dir_flag && YEAR) {
@@ -158,6 +174,10 @@ int main(int argc, char* argv[]) {
 	ssize_t char_read;
 
 	int converted;
+
+	/* Initialize our global variables */
+    VAR_ID_TIME = VAR_ID_LVL = VAR_ID_LAT = VAR_ID_LON = VAR_ID_SPECIAL = -1;
+    DIM_ID_TIME = DIM_ID_LVL = DIM_ID_LAT = DIM_ID_LON = -1;
 
     while ((opt = getopt(argc, argv, "i:f:o:p:s:dv")) != -1) {
         switch(opt) {
@@ -190,14 +210,15 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    printf("i: %s, f: %s, o: %s, p: %s, s: %s\n", input_dir, input_file, output_dir, prefix, suffix);
+    // printf("i: %s, f: %s, o: %s, p: %s, s: %s\n", input_dir, input_file, output_dir, prefix, suffix);
 
     if (!(input_dir_flag ^ input_file_flag)) {
     	printf("Must set one input directory OR input file\n");
     	exit(1);
     }
 
-	printf("Input desired indice ranges {Time, Level, Lat, Lon} as: a-b c-d e-f g-h\n> ");
+	// printf("Input desired indice ranges {Time, Level, Lat, Lon} as: a-b c-d e-f g-h\n> ");
+	printf("'year [value]' to select a file.\n> ");
 	while((char_read = getline(&input, &buffer_size, stdin)) != -1) {
 		if (check_commands(input)) {
 			goto RESET;
