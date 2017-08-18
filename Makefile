@@ -1,5 +1,5 @@
 OBJS = netCDF_driver.o ncwrapper.o
-QUERY = ncquery.o
+QUERY = ncwrapper.o ncquery.o
 CRAY_CC = cc
 NETCDF_FLAGS = -lm -lnetcdf
 CFLAGS += -g -O3

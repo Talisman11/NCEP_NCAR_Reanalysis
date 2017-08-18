@@ -1,30 +1,30 @@
 #include "ncwrapper.h"
 
-extern char input_dir[];
-extern char output_dir[];
-extern char prefix[];
-extern char suffix[];
+char input_dir[128] = "";
+char output_dir[128] = "";
+char prefix[64] = "";
+char suffix[64] = ".copy";
 
-extern char FILE_CUR[];
-extern char FILE_NEXT[];
-extern char COPY[];
+char FILE_CUR[256] = "";
+char FILE_NEXT[256] = "";
+char COPY[256] = "";
 
-extern int NUM_GRAINS;
-extern int TEMPORAL_GRANULARITY;
+int NUM_GRAINS = -1;
+int TEMPORAL_GRANULARITY = -1;
 
-extern size_t TIME_STRIDE;
-extern size_t LVL_STRIDE;
-extern size_t LAT_STRIDE;
+size_t TIME_STRIDE;
+size_t LVL_STRIDE;
+size_t LAT_STRIDE;
 
-extern int VAR_ID_TIME, VAR_ID_LVL, VAR_ID_LAT, VAR_ID_LON, VAR_ID_SPECIAL;
-extern int DIM_ID_TIME, DIM_ID_LVL, DIM_ID_LAT, DIM_ID_LON;
+int VAR_ID_TIME, VAR_ID_LVL, VAR_ID_LAT, VAR_ID_LON, VAR_ID_SPECIAL;
+int DIM_ID_TIME, DIM_ID_LVL, DIM_ID_LAT, DIM_ID_LON;
 
 int retval;
 int disable_clobber = 0;
 int enable_verbose = 0;
 int create_mask = NC_SHARE|NC_NETCDF4|NC_CLASSIC_MODEL;
 
-extern size_t SPECIAL_CHUNKS[];
+size_t SPECIAL_CHUNKS[4];
 // const size_t CHUNK_STANDARD_YEAR[] = {1, 2, 4, 10}; // Multiples of 1460
 // const size_t CHUNK_LEAP_YEAR[] = {1, 2, 4, 8}; // Multiples of 1464
 
