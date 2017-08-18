@@ -1,8 +1,3 @@
-#include <stdio.h>
-#include <stdlib.h> 
-#include <string.h>
-#include <netcdf.h>
-
 #include "ncwrapper.h"
 
 extern char input_dir[];

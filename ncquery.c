@@ -161,11 +161,11 @@ int extract_data() {
 }
 
 
-int process_request() {
-	if (input_dir_flag && YEAR) {
-		process_directory();
-	}
-}
+// int process_request() {
+// 	if (input_dir_flag && YEAR) {
+// 		process_directory();
+// 	}
+// }
 
 int main(int argc, char* argv[]) {
 	int opt;
@@ -236,7 +236,8 @@ int main(int argc, char* argv[]) {
 		}
 
 		printf("Found: %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu\n", time_x, time_y, lvl_x, lvl_y, lat_x, lat_y, lon_x, lon_y);
-		process_request();
+		// process_request();
+		extract_data();
 
 		/* Reset for next cycle */
 		RESET:
