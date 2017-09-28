@@ -134,6 +134,12 @@ int check_commands(char* input) {
 		return 1;
 	}
 
+	// if (strstr(input, "dir")) {
+	// 	if (1 == (match_count = sscanf(input, "dir %s", &input_dir))) {
+
+	// 	}
+	// }
+
 	if (print_dimension_var(input, "time\n", VAR_ID_TIME) || print_dimension_var(input, "level\n", VAR_ID_LVL) || 
 		print_dimension_var(input, "lat\n", VAR_ID_LAT) || print_dimension_var(input, "lon\n", VAR_ID_LON)) {
 		return 1;
