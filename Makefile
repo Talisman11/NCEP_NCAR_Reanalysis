@@ -1,12 +1,12 @@
 REANALYSIS = netCDF_driver.o ncwrapper.o
 QUERY = ncquery.o ncwrapper.o
-AVERAGE = avg_reanalysis.o ncwrapper.o
+AVERAGE = nc_average.o ncwrapper.o
 CRAY_CC = cc
 NETCDF_FLAGS = -lm -lnetcdf
 CFLAGS += -g -O3
 R_NAME = reanalysis
 Q_NAME = query
-average = average
+A_NAME = average
 
 reanalysis: $(REANALYSIS)
 	$(CRAY_CC) $(CFLAGS) $(REANALYSIS) -o $(R_NAME) $(NETCDF_FLAGS) 
