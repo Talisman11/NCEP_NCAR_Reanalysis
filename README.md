@@ -1,6 +1,6 @@
 # NCEP/NCAR Reanalysis Temporal Interpolation Program
 
-NCEP/NCAR has been collecting Reanalysis data since 1948 of various atmospheric variables across the Earth, stored in surface level (3D) or multilevel (4D) formats and is used by scientists around the world for research and analysis. Although the data is abundant, it is also coarse-grained in temporal and spatial senses, at 4x Daily (6 hour intervals) and 2.5 x 2.5 degree resolution. This program handles the temporal problem through linear interpolation on multilevel files, and is intended for usage on UIUC's Blue Waters, but is extensible to local machines and other supercomputing clusters given the correct setup.
+NCEP/NCAR has been collecting Reanalysis data since 1948 of various atmospheric variables across the Earth, stored in surface level (3D) or multilevel (4D) formats and is used by scientists around the world for research and analysis. Although the data is abundant, it is also coarse-grained in temporal and spatial senses, at 4x Daily (6 hour intervals) and 2.5 x 2.5 degree resolution. This program handles the temporal problem through linear interpolation on multilevel files, and is intended for usage on UIUC's Blue Waters, but is extensible to local machines and other supercomputing clusters given the correct setup. As of August 18, 2017, an additional query program has been included to allow users to view data from the files without needing to use HDFView.
 
 ## Input:
 
