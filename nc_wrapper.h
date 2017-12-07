@@ -1,5 +1,5 @@
-#ifndef __NCWRAPPER_H_
-#define __NCWRAPPER_H_
+#ifndef __NC_WRAPPER_H_
+#define __NC_WRAPPER_H_
 
 #include <stdio.h>
 #include <stdlib.h>

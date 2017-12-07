@@ -1,4 +1,4 @@
-#include "ncwrapper.h"
+#include "nc_wrapper.h"
 
 extern char input_dir[];
 extern char output_dir[];

@@ -1,6 +1,6 @@
-REANALYSIS = netCDF_driver.o ncwrapper.o
-QUERY = ncquery.o ncwrapper.o
-AVERAGE = nc_average.o ncwrapper.o
+REANALYSIS = nc_interp.o nc_wrapper.o
+QUERY = nc_query.o nc_wrapper.o
+AVERAGE = nc_average.o nc_wrapper.o
 CRAY_CC = cc
 NETCDF_FLAGS = -lm -lnetcdf
 CFLAGS += -g -O3

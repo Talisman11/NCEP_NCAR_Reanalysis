@@ -1,4 +1,4 @@
-#include "ncwrapper.h"
+#include "nc_wrapper.h"
 
 char input_dir[128] = "";
 char output_dir[128] = "";

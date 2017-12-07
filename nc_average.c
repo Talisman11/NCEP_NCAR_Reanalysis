@@ -1,4 +1,4 @@
-#include "ncwrapper.h"
+#include "nc_wrapper.h"
 
 /* Special indexing variables */
 extern int VAR_ID_TIME, VAR_ID_LVL, VAR_ID_LAT, VAR_ID_LON, VAR_ID_SPECIAL;

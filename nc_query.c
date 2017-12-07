@@ -1,4 +1,4 @@
-#include "ncwrapper.h"
+#include "nc_wrapper.h"
 
 #define DIM_PAD 30
 
