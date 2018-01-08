@@ -1,4 +1,11 @@
 #include "nc_wrapper.h"
+#include "math.h"
+
+int disable_clobber;
+int enable_verbose;
+int input_dir_flag;
+int input_file_flag;
+char input_file[256];
 
 /* Special indexing variables */
 extern int VAR_ID_TIME, VAR_ID_LVL, VAR_ID_LAT, VAR_ID_LON, VAR_ID_SPECIAL;
@@ -13,15 +20,8 @@ extern char FILE_CUR[];
 extern char FILE_NEXT[];
 extern char COPY[];
 
-/*
-Task  		- Average over each day for January 2013 file
-Approach	- Loop through file, gather times relevant to January 1 - 31
-			- Average Daily 4x values.
-Output 		- New file with 31 values for January
-
-Future 		- Loop through all days, finer granularity
-			- TERRA Overpass synchronization
-*/
+double INPUT_LAT, INPUT_LON;
+int INPUT_YEAR, INPUT_MONTH, INPUT_HOUR;
 
 /* Return days in particular month (1-12) for that year. */
 int days_in_month(int y, int m) {
@@ -53,63 +53,89 @@ int collect_range(int year, int start_m, int end_m) {
 	}
 }
 
-int main(int argc, char* argv[]) {
-    int count;
-    struct dirent **dir_list;
-
-	/* Initialize our global variables */
-    VAR_ID_TIME = VAR_ID_LVL = VAR_ID_LAT = VAR_ID_LON = VAR_ID_SPECIAL = -1;
-    DIM_ID_TIME = DIM_ID_LVL = DIM_ID_LAT = DIM_ID_LON = -1;
-
-    // Identical Code from Query program for grabbing command flags from user
-    while ((opt = getopt(argc, argv, "i:f:o:p:s:dv")) != -1) {
+int process_average_arguments(int argc, char* argv[]) {
+    int opt;
+    while ((opt = getopt(argc, argv, "r:c:y:m:h:i:f:o:p:s:dv")) != -1) {
         switch(opt) {
-            case 'i': /* Input file directory */
+            /* Primary user arguments prefixed with 'INPUT_' */
+            case 'r': /* Latitude */
+                INPUT_LAT = atof(optarg);
+                break;
+            case 'c': /* Longitude */
+                INPUT_LON = atof(optarg);
+                break;
+            case 'y': /* Year */
+                INPUT_YEAR = atoi(optarg);
+                break;
+            case 'm': /* Month */
+                INPUT_MONTH = atoi(optarg);
+                break;
+            case 'h': /* Hour on 24-Hour system */
+                INPUT_HOUR = atoi(optarg);
+                break;
+            /* Additional program args */
+            case 'i':
                 strcpy(input_dir, optarg);
                 input_dir_flag = 1;
                 break;
             case 'f':
-        		strcpy(input_file, optarg);
-        		input_file_flag = 1;
-        		break;
+                strcpy(input_file, optarg);
+                input_file_flag = 1;
+                break;
             case 'o': /* Output file directory (default is same as input) */
-            	strcpy(output_dir, optarg);
-            	break;
-        	case 'p': /* Output file prefix */
+                strcpy(output_dir, optarg);
+                break;
+            case 'p': /* Output file prefix */
                 strcpy(prefix, optarg);
                 break;
             case 's': /* Output file suffix (default is '.copy'[.nc]) */
                 strcpy(suffix, optarg);
                 break;
             case 'd':
-            	disable_clobber = 1;
-            	break;
-        	case 'v':
-        		enable_verbose = 1;
-        		break;
+                disable_clobber = 1;
+                break;
+            case 'v':
+                enable_verbose = 1;
+                break;
             default:
-            	printf("Bad case!\n");
-            	return 1;
+                printf("Bad case!\n");
+                return 1;
         }
     }
 
-    
+    /* NCAR/NCEP Reanalysis  is [-90.0, 90.0] degrees */
+    if (INPUT_LAT < -90.0 || INPUT_LAT > 90.0 || fmod(INPUT_LAT, 2.5) != 0.0) {
+        fprintf(stderr, "Latitude not valid\n");
+    }
+}
+
+int main(int argc, char* argv[]) {
+    int opt, count;
+    struct dirent **dir_list;
+
+	/* Initialize our global variables */
+    VAR_ID_TIME = VAR_ID_LVL = VAR_ID_LAT = VAR_ID_LON = VAR_ID_SPECIAL = -1;
+    DIM_ID_TIME = DIM_ID_LVL = DIM_ID_LAT = DIM_ID_LON = -1;
+
+    if (process_average_arguments(argc, argv)) {
+        printf("Program usage: %s\n", argv[0]); 
+        printf("\t-r [latitude] -c [longitude] -y [year] -m [month] -h [hour (24hr)]\n");
+        printf("\t-i [input directory] -d [delete flag; no args]\n");
+        printf("\t-o [output directory] -p [output FILE_CUR prefix] -s [output FILE_CUR suffix] -v [verbose; no args]\n");
+        exit(1);
+    }
+
     printf("arg 0 %s arg 1 %s\n", argv[0], argv[1]);
 
     collect_range(2013, 0, 0);
 
 
-    printf("Reanalysis program completed successfully.\n");
+    printf("Averaging program completed successfully.\n");
 
 }
 
-// This is too messy...
-
-// Need to refactor the ncwrapper.c -> only NetCDF wrapped functions should be in here, and
-// put helper functions for 'netCDF_driver.c' into a seperate .h file for netCDF_driver.c
 
 /*
-
 main(int argc, char* argv[]) {
 	- declare and initalize flags/counters
 	- process command-line arguments (model after 'process_arguments' in ncwrapper)
@@ -123,3 +149,4 @@ main(int argc, char* argv[]) {
 	-
 }
 
+*/
