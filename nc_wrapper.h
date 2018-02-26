@@ -41,7 +41,7 @@ typedef struct Dimension {
 char*  ___nc_type(int nc_type);
 
 /* Opens NetCDF file in read-only mode*/
-void ___nc_open(char* file_name, int* ncid);
+void ___nc_open(const char* file_name, int* ncid);
 
 /* Creates NetCDF file with certain flags set already */
 void ___nc_create(char* file_name, int* ncid);

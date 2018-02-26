@@ -59,7 +59,7 @@ char*  ___nc_type(int nc_type) {
 	}
 }
 
-void ___nc_open(char* file_name, int* file_handle) {
+void ___nc_open(const char* file_name, int* file_handle) {
 	if ((retval = nc_open(file_name, NC_NOWRITE, file_handle)))
     	NC_ERR(retval);
 }

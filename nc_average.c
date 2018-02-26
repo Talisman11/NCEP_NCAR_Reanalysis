@@ -35,94 +35,6 @@ Dimension *dims;
 
 int file_id, num_vars, num_dims;
 
-/* 
- * Find idx of last period, NULL terminate, then find second to last and return the year
- * year - extracted value from file_name
- * file_name - input filename
- */
-int extract_year(int* year, const char* file_name) {
-    int i = 0;
-    const char period = '.';
-    char *copy, *last_per, *sec_per;
-    
-    // Create copy of file_name for extraction
-    copy = (char *) malloc(sizeof(char) * (strlen(file_name) + 1));
-    strcpy(copy, file_name);
-
-    if (strlen(copy) > 0) {
-        last_per = strrchr(copy, period); 
-        if ((last_per != NULL) && (last_per > 0)) {
-            copy[last_per - copy] = '\0';
-            sec_per = strrchr(copy, period);
-
-            if ((sec_per != NULL) && (sec_per > 0)) {
-                *year = atoi(sec_per + 1); 
-                return 0;
-            }
-        }
-    }
-    return 1;
-}
-
-/* Return days in particular month (1-12) for that year. */
-int days_in_month(int y, int m) {
-	if (m == 2) {
-		if ((y % 4 == 0 && y % 100 != 0) || (y % 400 == 0))
-			return 29;
-		return 28;
-	}
-
-	if (m == 4 || m == 6 || m == 9 || m == 11)
-		return 30;
-	return 31;
-}
-
-/* Prepares for processing */
-int calibrate(int year, int month, double lat, double lon, int hour, const char* input_file) {
-    int total_days, start_m, end_m;
-
-    if (month == 0) {
-        start_m = 1;
-        end_m = 12;
-    } else {
-        start_m = month;
-        end_m = month + 2;
-    }
-
-    total_days = 0;
-    for (int i = start_m; i <= end_m; i++) {
-        total_days += days_in_month(year, i);
-    }
-    
-    ___nc_open(input_file, &file_id);
-
-    nc_inq(file_id, &num_dims, &num_vars, NULL, NULL);
-
-    /* Output Dimension Information */
-    dims = (Dimension *) malloc(num_dims * sizeof(Dimension));
-    for (int i = 0; i < num_dims; i++) {
-        ___nc_inq_dim(file_id, i, &dims[i]);
-    }
-
-    /* Output Variable Information */
-    vars = (Variable *) malloc(num_vars * sizeof(Variable));
-    for (int i = 0; i < num_vars; i++) {
-        ___nc_inq_var(file_id, i, &vars[i], dims);
-    }
-
-    printf("Loading variable data\n");
-    for (int i = 0; i < num_vars; i++) {
-        ___nc_get_var_array(file_id, i, &vars[i], dims);
-    }
-
-    TIME_STRIDE = dims[DIM_ID_LON].length * dims[DIM_ID_LAT].length * dims[DIM_ID_LVL].length;
-    LVL_STRIDE  = dims[DIM_ID_LON].length * dims[DIM_ID_LAT].length;
-    LAT_STRIDE  = dims[DIM_ID_LON].length;
-    printf("WORK PELASE\n");
-
-    return 0;
-}
-
 int process_average_arguments(int argc, char* argv[]) {
     int opt;
 
@@ -223,8 +135,103 @@ int process_average_arguments(int argc, char* argv[]) {
     return 0;
 }
 
+/* 
+ * Find idx of last period, NULL terminate, then find second to last and return the year
+ * year - extracted value from file_name
+ * file_name - input filename
+ */
+int extract_year(int* year, const char* file_name) {
+    int i = 0;
+    const char period = '.';
+    char *copy, *last_per, *sec_per;
+    
+    // Create copy of file_name for extraction
+    copy = (char *) malloc(sizeof(char) * (strlen(file_name) + 1));
+    strcpy(copy, file_name);
+
+    if (strlen(copy) > 0) {
+        last_per = strrchr(copy, period); 
+        if ((last_per != NULL) && (last_per > 0)) {
+            copy[last_per - copy] = '\0';
+            sec_per = strrchr(copy, period);
+
+            if ((sec_per != NULL) && (sec_per > 0)) {
+                *year = atoi(sec_per + 1); 
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+/* Return days in particular month (1-12) for that year. */
+int days_in_month(int y, int m) {
+	if (m == 2) {
+		if ((y % 4 == 0 && y % 100 != 0) || (y % 400 == 0))
+			return 29;
+		return 28;
+	}
+
+	if (m == 4 || m == 6 || m == 9 || m == 11)
+		return 30;
+	return 31;
+}
+
+/* Prepares for processing */
+int calibrate(int *total_days, int year, int month) {
+    int start_m, end_m;
+
+    if (month == 0) {
+        start_m = 1;
+        end_m = 12;
+    } else {
+        start_m = month;
+        end_m = month + 2;
+    }
+
+    total_days = 0; // zero the input value before adding to it
+    for (int i = start_m; i <= end_m; i++) {
+        total_days += days_in_month(year, i);
+    }
+
+    return 0;
+}
+
+int gather(int year, int month, double lat, double lon, int total_days, const char* input_file) {
+    printf("\nAttempting to gather data: %s\n", input_file);
+
+    ___nc_open(input_file, &file_id);
+
+    nc_inq(file_id, &num_dims, &num_vars, NULL, NULL);
+
+    /* Output Dimension Information */
+    printf("DIMENSION INFO:\n");
+    dims = (Dimension *) malloc(num_dims * sizeof(Dimension));
+    for (int i = 0; i < num_dims; i++) {
+        ___nc_inq_dim(file_id, i, &dims[i]);
+    }
+
+    /* Output Variable Information */
+    printf("VARIABLE INFO:\n");
+    vars = (Variable *) malloc(num_vars * sizeof(Variable));
+    for (int i = 0; i < num_vars; i++) {
+        ___nc_inq_var(file_id, i, &vars[i], dims);
+    }
+
+    printf("Loading variable data\n");
+    for (int i = 0; i < num_vars; i++) {
+        ___nc_get_var_array(file_id, i, &vars[i], dims);
+    }
+
+    TIME_STRIDE = dims[DIM_ID_LON].length * dims[DIM_ID_LAT].length * dims[DIM_ID_LVL].length;
+    LVL_STRIDE  = dims[DIM_ID_LON].length * dims[DIM_ID_LAT].length;
+    LAT_STRIDE  = dims[DIM_ID_LON].length;
+
+    
+}
+
 int main(int argc, char* argv[]) {
-    int opt, count;
+    int total_days;
     struct dirent **dir_list;
 
 	/* Initialize our global variables */
@@ -239,11 +246,16 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
-    if (calibrate(INPUT_YEAR, INPUT_MONTH, INPUT_LON, INPUT_LAT, INPUT_HOUR, input_file)) {
-        printf("Gather data function failed\n");
+    // if (calibrate(INPUT_YEAR, INPUT_MONTH, INPUT_LON, INPUT_LAT, INPUT_HOUR, input_file)) {
+    if (calibrate(&total_days, INPUT_YEAR, INPUT_MONTH)) {
+        printf("Calibrate function failed\n");
         exit(1);
     }
 
+    if (gather(INPUT_YEAR, INPUT_MONTH, INPUT_LAT, INPUT_LON, total_days, input_file)) {
+        printf("Gather function failed\n");
+        exit(1);
+    }
     // int days = days_in_month(INPUT_YEAR, INPUT_MONTH);
     // printf("%d/%d has %d days\n", INPUT_MONTH, INPUT_YEAR, days);
 
