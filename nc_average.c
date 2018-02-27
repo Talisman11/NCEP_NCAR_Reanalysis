@@ -8,7 +8,6 @@ int input_dir_flag;
 int input_file_flag;
 char input_file[256];
 
-
 /* Special indexing variables */
 extern int VAR_ID_TIME, VAR_ID_LVL, VAR_ID_LAT, VAR_ID_LON, VAR_ID_SPECIAL;
 extern int DIM_ID_TIME, DIM_ID_LVL, DIM_ID_LAT, DIM_ID_LON;
@@ -29,6 +28,9 @@ extern size_t LAT_STRIDE;
 
 double INPUT_LAT, INPUT_LON;
 int INPUT_YEAR, INPUT_MONTH, INPUT_HOUR;
+
+int LEAP_YEAR;
+size_t DAY_STRIDE;
 
 Variable *vars;
 Dimension *dims;
@@ -135,7 +137,7 @@ int process_average_arguments(int argc, char* argv[]) {
     return 0;
 }
 
-/* 
+/*
  * Find idx of last period, NULL terminate, then find second to last and return the year
  * year - extracted value from file_name
  * file_name - input filename
@@ -144,19 +146,19 @@ int extract_year(int* year, const char* file_name) {
     int i = 0;
     const char period = '.';
     char *copy, *last_per, *sec_per;
-    
+
     // Create copy of file_name for extraction
     copy = (char *) malloc(sizeof(char) * (strlen(file_name) + 1));
     strcpy(copy, file_name);
 
     if (strlen(copy) > 0) {
-        last_per = strrchr(copy, period); 
+        last_per = strrchr(copy, period);
         if ((last_per != NULL) && (last_per > 0)) {
             copy[last_per - copy] = '\0';
             sec_per = strrchr(copy, period);
 
             if ((sec_per != NULL) && (sec_per > 0)) {
-                *year = atoi(sec_per + 1); 
+                *year = atoi(sec_per + 1);
                 return 0;
             }
         }
@@ -178,30 +180,40 @@ int days_in_month(int y, int m) {
 }
 
 /* Prepares for processing */
-int calibrate(int *total_days, int year, int month) {
-    int start_m, end_m;
+int calibrate(int *preceding_days, int *total_days, int year, int month) {
+    int start_m, end_m, days;
 
     if (month == 0) {
         start_m = 1;
         end_m = 12;
     } else {
         start_m = month;
-        end_m = month + 2;
+        end_m = month + 1; // ?? why is there a 2 here?
     }
+    printf("start: %d, end: %d\n", start_m, end_m);
 
-    total_days = 0; // zero the input value before adding to it
-    for (int i = start_m; i <= end_m; i++) {
-        total_days += days_in_month(year, i);
+    // Set leap year flag
+    LEAP_YEAR = days_in_month(year, 2) == 29 ? 1 : 0;
+
+    *total_days = 0; // zero the input value before adding to it
+    *preceding_days = 0;
+    for (int i = 1; i < end_m; i++) {
+        days = days_in_month(year, i);
+        if (i >= start_m) {
+            *total_days += days;
+        } else {
+            *preceding_days += days;
+        }
     }
+    printf("total_days: %d, preceding_days: %d\n", *total_days, *preceding_days);
 
     return 0;
 }
 
-int gather(int year, int month, double lat, double lon, int total_days, const char* input_file) {
-    printf("\nAttempting to gather data: %s\n", input_file);
+int gather(double tgt_lon, int preceding_days, int total_days, const char* input_file) {
+    size_t time, lvl, lat, lon, index, time_start, time_end, tgt_lon_idx;
 
     ___nc_open(input_file, &file_id);
-
     nc_inq(file_id, &num_dims, &num_vars, NULL, NULL);
 
     /* Output Dimension Information */
@@ -226,12 +238,38 @@ int gather(int year, int month, double lat, double lon, int total_days, const ch
     TIME_STRIDE = dims[DIM_ID_LON].length * dims[DIM_ID_LAT].length * dims[DIM_ID_LVL].length;
     LVL_STRIDE  = dims[DIM_ID_LON].length * dims[DIM_ID_LAT].length;
     LAT_STRIDE  = dims[DIM_ID_LON].length;
+    DAY_STRIDE  = LEAP_YEAR ? dims[DIM_ID_TIME].length / 366 : dims[DIM_ID_TIME].length / 365;
 
-    
+    time_start = DAY_STRIDE * preceding_days;
+    time_end   = DAY_STRIDE * (preceding_days + total_days);
+
+    for (lon = 0; lon < dims[DIM_ID_LON].length; lon++) {
+        printf("lon: %f\n", dims[DIM_ID_LON][lon]);
+    }
+
+
+    printf("start: %lu, end: %lu, lon: %f\n", time_start, time_end);
+
+    float* var_data = vars[VAR_ID_SPECIAL].data;
+    for (time = time_start; time < time_end && time < dims[DIM_ID_TIME].length; time++) {
+        for (lvl = 0; lvl < dims[DIM_ID_LVL].length; lvl++) {
+            for (lat = 0; lat < dims[DIM_ID_LAT].length; lat++) {
+                // for (lon = 0; lon < dims[DIM_ID_LON].length; lon++) {
+                    index = ___access_nc_array(time, lvl, lat, LON);
+                // }
+            }
+
+
+        }
+        printf("%lu -> %s[%lu][%lu][%lu][%lu] = [%lu] = %f\n",
+            YEAR, vars[VAR_ID_SPECIAL].name, time, lvl, lat, lon, index, var_data[index]);
+    }
+
+    return 0;
 }
 
 int main(int argc, char* argv[]) {
-    int total_days;
+    int preceding_days, total_days;
     struct dirent **dir_list;
 
 	/* Initialize our global variables */
@@ -239,26 +277,22 @@ int main(int argc, char* argv[]) {
     DIM_ID_TIME = DIM_ID_LVL = DIM_ID_LAT = DIM_ID_LON = -1;
 
     if (process_average_arguments(argc, argv)) {
-        printf("Program usage: %s\n", argv[0]); 
+        printf("Program usage: %s\n", argv[0]);
         printf("\t-r [latitude] -c [longitude] -y [year] -m [month] -h [hour (24hr)]\n");
         printf("\t-i [input directory] -f [input file] -d [delete flag; no args]\n");
         printf("\t-o [output directory] -p [output FILE_CUR prefix] -s [output FILE_CUR suffix] -v [verbose; no args]\n");
         exit(1);
     }
 
-    // if (calibrate(INPUT_YEAR, INPUT_MONTH, INPUT_LON, INPUT_LAT, INPUT_HOUR, input_file)) {
-    if (calibrate(&total_days, INPUT_YEAR, INPUT_MONTH)) {
+    if (calibrate(&preceding_days, &total_days, INPUT_YEAR, INPUT_MONTH)) {
         printf("Calibrate function failed\n");
         exit(1);
     }
 
-    if (gather(INPUT_YEAR, INPUT_MONTH, INPUT_LAT, INPUT_LON, total_days, input_file)) {
+    if (gather(INPUT_LON, preceding_days, total_days, input_file)) {
         printf("Gather function failed\n");
         exit(1);
     }
-    // int days = days_in_month(INPUT_YEAR, INPUT_MONTH);
-    // printf("%d/%d has %d days\n", INPUT_MONTH, INPUT_YEAR, days);
-
 
     printf("Averaging program completed successfully.\n");
     return 0;
