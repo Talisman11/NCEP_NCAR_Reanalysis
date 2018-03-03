@@ -125,7 +125,7 @@ int process_average_arguments(int argc, char* argv[]) {
     }
 
     printf("Program proceeding with:\n");
-    printf("\tLatitutde: %f\n", INPUT_LAT);
+    printf("\tLatitude: %f\n", INPUT_LAT);
     printf("\tLongitude: %f\n", INPUT_LON);
     printf("\tYear | Month | Hour: %d | %d | %d\n", INPUT_YEAR, INPUT_MONTH, INPUT_HOUR);
     printf("\tDisable clobbering = %d\n", disable_clobber);
@@ -210,8 +210,31 @@ int calibrate(int *preceding_days, int *total_days, int year, int month) {
     return 0;
 }
 
-int gather(double tgt_lon, int preceding_days, int total_days, const char* input_file) {
-    size_t time, lvl, lat, lon, index, time_start, time_end, tgt_lon_idx;
+int find_longitude(size_t* lon_idx, size_t* lon_bin, double tgt_lon) {
+    float *lon_data, lon_grain;
+
+    lon_data = vars[VAR_ID_LON].data;
+    lon_grain = 360.0 / vars[VAR_ID_LON].length;
+
+    *lon_bin = -1;
+    for (int i = 0; i < vars[VAR_ID_LON].length; i++) {
+        // Update which bin we are analyzing accordingly
+        if (fmod(lon_data[i], 15.0) == 0.0) {
+            *lon_bin += 1;
+        }
+
+        // Break out on match
+        if (lon_data[i] == tgt_lon) {
+            *lon_idx = i;
+            return 0;
+        }
+    }
+
+    return 1;
+}
+int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days, const char* input_file) {
+    size_t time, lvl, lat, index, time_start, time_end, tgt_lon_idx, tgt_lon_bin;
+    float *lon_data, *var_data;
 
     ___nc_open(input_file, &file_id);
     nc_inq(file_id, &num_dims, &num_vars, NULL, NULL);
@@ -238,31 +261,48 @@ int gather(double tgt_lon, int preceding_days, int total_days, const char* input
     TIME_STRIDE = dims[DIM_ID_LON].length * dims[DIM_ID_LAT].length * dims[DIM_ID_LVL].length;
     LVL_STRIDE  = dims[DIM_ID_LON].length * dims[DIM_ID_LAT].length;
     LAT_STRIDE  = dims[DIM_ID_LON].length;
+
+    /* Check how many time indices equate to one day. Must be 24 */
     DAY_STRIDE  = LEAP_YEAR ? dims[DIM_ID_TIME].length / 366 : dims[DIM_ID_TIME].length / 365;
 
-    time_start = DAY_STRIDE * preceding_days;
-    time_end   = DAY_STRIDE * (preceding_days + total_days);
-
-    for (lon = 0; lon < dims[DIM_ID_LON].length; lon++) {
-        printf("lon: %f\n", dims[DIM_ID_LON][lon]);
+    if (DAY_STRIDE != 24) {
+        fprintf(stderr, "NCAR/NCEP Reanalysis file '%s' variable '%s' must have 24 time indices per day.\
+        Broader and finer granularities currently unsupported.\n", input_file, vars[VAR_ID_SPECIAL].name);
+        return 1;
     }
 
+    // Calibrate [start, end] range
+    time_start = DAY_STRIDE * preceding_days + tgt_hour; // Find start day idx, adjust for target hour
+    time_end   = DAY_STRIDE * (preceding_days + total_days);
 
-    printf("start: %lu, end: %lu, lon: %f\n", time_start, time_end);
+    /* Find index and 15 degree bin (time zone) of the input longitude */
+    if (find_longitude(&tgt_lon_idx, &tgt_lon_bin, tgt_lon)) {
+        fprintf(stderr, "Longitude (%f) invalid or not found in reanalysis variable.\
+        Cannot proceed; terminating.\n", tgt_lon);
+        return 1;
+    }
 
-    float* var_data = vars[VAR_ID_SPECIAL].data;
+    // blah
+    printf("start: %lu, end: %lu, day_stride: %lu\n", time_start, time_end, DAY_STRIDE);
+    printf("tgt_lon: %f, tgt_lon_idx: %lu, tgt_lon_bin: %lu\n", tgt_lon, tgt_lon_idx, tgt_lon_bin);
+
+    /* Start processing */
+    var_data = vars[VAR_ID_SPECIAL].data;
     for (time = time_start; time < time_end && time < dims[DIM_ID_TIME].length; time++) {
         for (lvl = 0; lvl < dims[DIM_ID_LVL].length; lvl++) {
             for (lat = 0; lat < dims[DIM_ID_LAT].length; lat++) {
-                // for (lon = 0; lon < dims[DIM_ID_LON].length; lon++) {
-                    index = ___access_nc_array(time, lvl, lat, LON);
-                // }
+                index = ___access_nc_array(time, lvl, lat, tgt_lon_idx);
+
+                /*
+                if (lvl == 0 && lat == 0) {
+                    printf("%lu -> %s[%lu][%lu][%lu][%lu] = [%lu] = %f\n",
+                        INPUT_YEAR, vars[VAR_ID_SPECIAL].name, time, lvl, lat, tgt_lon_idx, index, var_data[index]);
+                }
+                */
+
+
             }
-
-
         }
-        printf("%lu -> %s[%lu][%lu][%lu][%lu] = [%lu] = %f\n",
-            YEAR, vars[VAR_ID_SPECIAL].name, time, lvl, lat, lon, index, var_data[index]);
     }
 
     return 0;
@@ -289,7 +329,7 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
-    if (gather(INPUT_LON, preceding_days, total_days, input_file)) {
+    if (gather(INPUT_LON, INPUT_HOUR, preceding_days, total_days, input_file)) {
         printf("Gather function failed\n");
         exit(1);
     }
