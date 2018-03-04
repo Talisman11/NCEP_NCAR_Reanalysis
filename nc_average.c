@@ -25,7 +25,7 @@ extern size_t TIME_STRIDE;
 extern size_t LVL_STRIDE;
 extern size_t LAT_STRIDE;
 
-
+// Global variables specified by user
 double INPUT_LAT, INPUT_LON;
 int INPUT_YEAR, INPUT_MONTH, INPUT_HOUR;
 
@@ -36,6 +36,9 @@ Variable *vars;
 Dimension *dims;
 
 int file_id, num_vars, num_dims;
+int TIME_ZONE[25] = {-12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, \
+                    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+int TIME_ZONE_ADJ[25] = { 0 };
 
 int process_average_arguments(int argc, char* argv[]) {
     int opt;
@@ -211,15 +214,14 @@ int calibrate(int *preceding_days, int *total_days, int year, int month) {
 }
 
 int find_longitude(size_t* lon_idx, size_t* lon_bin, double tgt_lon) {
-    float *lon_data, lon_grain;
+    float *lon_data;
 
     lon_data = vars[VAR_ID_LON].data;
-    lon_grain = 360.0 / vars[VAR_ID_LON].length;
 
-    *lon_bin = -1;
+    *lon_bin = 0; // Start at UTC -12 for [0, 7.5] degrees. [352.5, 360.0] is UTC +12.
     for (int i = 0; i < vars[VAR_ID_LON].length; i++) {
         // Update which bin we are analyzing accordingly
-        if (fmod(lon_data[i], 15.0) == 0.0) {
+        if (fmod(lon_data[i], 15.0) == 7.5) {
             *lon_bin += 1;
         }
 
@@ -233,7 +235,8 @@ int find_longitude(size_t* lon_idx, size_t* lon_bin, double tgt_lon) {
     return 1;
 }
 int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days, const char* input_file) {
-    size_t time, lvl, lat, index, time_start, time_end, tgt_lon_idx, tgt_lon_bin;
+    size_t time, lvl, lat, lon, index, time_start, time_end;
+    size_t tgt_lon_idx, tgt_lon_bin, cur_lon_bin;
     float *lon_data, *var_data;
 
     ___nc_open(input_file, &file_id);
@@ -264,16 +267,15 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days, con
 
     /* Check how many time indices equate to one day. Must be 24 */
     DAY_STRIDE  = LEAP_YEAR ? dims[DIM_ID_TIME].length / 366 : dims[DIM_ID_TIME].length / 365;
-
     if (DAY_STRIDE != 24) {
         fprintf(stderr, "NCAR/NCEP Reanalysis file '%s' variable '%s' must have 24 time indices per day.\
         Broader and finer granularities currently unsupported.\n", input_file, vars[VAR_ID_SPECIAL].name);
         return 1;
     }
 
-    // Calibrate [start, end] range
+    /* Calibrate [start, end] range */
     time_start = DAY_STRIDE * preceding_days + tgt_hour; // Find start day idx, adjust for target hour
-    time_end   = DAY_STRIDE * (preceding_days + total_days);
+    time_end   = DAY_STRIDE * (preceding_days + total_days) + tgt_hour; // Adjust end time as wells
 
     /* Find index and 15 degree bin (time zone) of the input longitude */
     if (find_longitude(&tgt_lon_idx, &tgt_lon_bin, tgt_lon)) {
@@ -282,25 +284,33 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days, con
         return 1;
     }
 
-    // blah
-    printf("start: %lu, end: %lu, day_stride: %lu\n", time_start, time_end, DAY_STRIDE);
+    /* Adjust the offset for each timezone */
+    for (int i = 0; i < 25; i++) {
+        TIME_ZONE_ADJ[i] = TIME_ZONE[i] - TIME_ZONE[tgt_lon_bin];
+        printf("tz[%d] = %d\n", i, TIME_ZONE_ADJ[i]);
+    }
+
+    printf("start: %lu, end: %lu, day_stride: %lu, tgt_hour: %d\n", time_start, time_end, DAY_STRIDE, tgt_hour);
     printf("tgt_lon: %f, tgt_lon_idx: %lu, tgt_lon_bin: %lu\n", tgt_lon, tgt_lon_idx, tgt_lon_bin);
 
     /* Start processing */
+    lon_data = vars[VAR_ID_LON].data;
     var_data = vars[VAR_ID_SPECIAL].data;
     for (time = time_start; time < time_end && time < dims[DIM_ID_TIME].length; time++) {
+        printf("TIME: %lu\n", time);
         for (lvl = 0; lvl < dims[DIM_ID_LVL].length; lvl++) {
             for (lat = 0; lat < dims[DIM_ID_LAT].length; lat++) {
-                index = ___access_nc_array(time, lvl, lat, tgt_lon_idx);
+                for (lon = 0, cur_lon_bin = 0; lon < dims[DIM_ID_LON].length; lon++) {
+                    if (fmod(lon_data[lon], 15.0) == 7.5) { // Find our current longitude bin to match with the corr. time zone
+                        cur_lon_bin += 1;
+                    }
+                    index = ___access_nc_array(time + TIME_ZONE_ADJ[cur_lon_bin], lvl, lat, lon);
 
-                /*
-                if (lvl == 0 && lat == 0) {
-                    printf("%lu -> %s[%lu][%lu][%lu][%lu] = [%lu] = %f\n",
-                        INPUT_YEAR, vars[VAR_ID_SPECIAL].name, time, lvl, lat, tgt_lon_idx, index, var_data[index]);
+                    if (lvl == 0 && lat == 0 && time < time_start + 3) {
+                        printf("%lu -> %s[%lu][%lu][%lu][%lu] = [%lu] = %f\n", INPUT_YEAR, vars[VAR_ID_SPECIAL].name,
+                            time + TIME_ZONE_ADJ[cur_lon_bin], lvl, lat, lon, index, var_data[index]);
+                    }
                 }
-                */
-
-
             }
         }
     }
