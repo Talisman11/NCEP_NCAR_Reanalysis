@@ -93,9 +93,9 @@ void ___nc_def_var_chunking(int ncid, int varid, const size_t *chunksizesp) {
 }
 
 void ___nc_def_var_deflate(int ncid, int varid) {
-	/* Variable deflation with shuffle = 1, deflate = 1, at level 2. 
+	/* Variable deflation with shuffle = 1, deflate = 1, at level 2.
 	 * Other levels take longer for variable and insignificant degrees of compression */
-	if ((retval = nc_def_var_deflate(ncid, varid, 1, 1, 2))) 
+	if ((retval = nc_def_var_deflate(ncid, varid, 1, 1, 2)))
 		NC_ERR(retval)
 }
 
@@ -115,11 +115,11 @@ void ___nc_put_var_array(int file_handle, Variable var) {
 }
 
 void ___nc_inq_dim(int file_handle, int id, Dimension* dim) {
-	if ((retval = nc_inq_dim(file_handle, id, dim->name, &dim->length))) 
+	if ((retval = nc_inq_dim(file_handle, id, dim->name, &dim->length)))
 		NC_ERR(retval);
 
 	dim->id = id;
-	if (str_eq(dim->name, "time")) 
+	if (str_eq(dim->name, "time"))
 		DIM_ID_TIME = id;
 	if (str_eq(dim->name, "level"))
 		DIM_ID_LVL = id;
@@ -135,7 +135,7 @@ void ___nc_inq_dim(int file_handle, int id, Dimension* dim) {
 void ___nc_inq_att(int file_handle, int var_id, int num_attrs) {
 	char att_name[NC_MAX_NAME + 1];
 	nc_type att_type;
-	size_t att_length; 
+	size_t att_length;
 
 	printf("\tAttribute Information: (name, att_num, nc_type, length)\n");
 	for (int att_num = 0; att_num < num_attrs; att_num++) {
@@ -143,14 +143,14 @@ void ___nc_inq_att(int file_handle, int var_id, int num_attrs) {
 			NC_ERR(retval);
 
 		if ((retval = nc_inq_att(file_handle, var_id, att_name, &att_type, &att_length)))
-			NC_ERR(retval);	
+			NC_ERR(retval);
 
 		/* Double indent, with fixed length padding, in format of: (att_name, att_num, att_type, att_length)
 		 * %-*s -> string followed by * spaces for left align
 		 * %*s 	-> string preceded by * spaces for right align */
 		printf("\t\t %-*s %d\t %d\t %lu\n", ATTR_PAD, att_name, att_num, att_type, att_length);
 
-	}	
+	}
 }
 
 void ___nc_inq_var(int file_handle, int id, Variable* var, Dimension* dims) {
@@ -171,7 +171,7 @@ void ___nc_inq_var(int file_handle, int id, Variable* var, Dimension* dims) {
 
     /* Output attribute data */
 	if (enable_verbose) {
-	    printf("\tName: %s\t ID: %d\t netCDF_type: %s\t Num_dims: %d\t Num_attrs: %d\n", 
+	    printf("\tName: %s\t ID: %d\t netCDF_type: %s\t Num_dims: %d\t Num_attrs: %d\n",
 	    	var->name, id, ___nc_type(var->type), var->num_dims, var->num_attrs);
 
 	    for (int i = 0; i < var->num_dims; i++) {
@@ -189,8 +189,8 @@ void ___nc_get_var_array(int file_handle, int id, Variable* var, Dimension* dims
 
 	/* We want to grab all the data in each dimension from [0 - dim_length). Number of elements to read == max_size (hence multiplication) */
 	for (int i = 0; i < var->num_dims; i++) {
-		starts[i] 	= 0; 
-		counts[i] 	= dims[var->dim_ids[i]].length; 
+		starts[i] 	= 0;
+		counts[i] 	= dims[var->dim_ids[i]].length;
 		var->length 	*= dims[var->dim_ids[i]].length;
 	}
 
@@ -207,7 +207,7 @@ void ___nc_get_var_array(int file_handle, int id, Variable* var, Dimension* dims
 
 	if (retval)	NC_ERR(retval);
 
-	if (enable_verbose) 
+	if (enable_verbose)
 		printf("\tPopulated array - ID: %d Variable: %s Type: %s Size: %lu, \n", var->id, var->name, ___nc_type(var->type), var->length);
 }
 
@@ -288,7 +288,7 @@ int invalid_file(char* name) {
 
     // We do not want to read in interpolated files. This case would happen if the output dir == input dir.
     if (((strlen(suffix) > 0 && strstr(name, suffix)) || (strlen(prefix) > 0 && strstr(name, prefix)))) {
-    	printf("Presence of prefix or suffix in file indicates interpoalted file. Consider using -o to set output directory.\n");
+    	printf("Presence of prefix or suffix in file indicates interpolated file. Consider using -o to set output directory.\n");
         return 1;
     }
 
@@ -296,7 +296,7 @@ int invalid_file(char* name) {
     	printf("Entry '%s' is not a NetCDF file\n", name);
         return 1;
     }
-    	
+
     return 0;
 }
 
@@ -325,7 +325,7 @@ void concat_names(struct dirent *dir_entry_cur, struct dirent *dir_entry_next) {
 int verify_next_file_variable(int copy, int next, Variable* var, Variable* var_next, Dimension* dims) {
 	int num_dims, num_vars;
 	size_t starts[var->num_dims];
-	size_t counts[var->num_dims];	
+	size_t counts[var->num_dims];
 
 	/* Inquire next file to verify its variable matches the current variable */
 	nc_inq(next, &num_dims, &num_vars, NULL, NULL);
@@ -337,10 +337,10 @@ int verify_next_file_variable(int copy, int next, Variable* var, Variable* var_n
 	}
 
 	for (int i = 0; i < var->num_dims; i++) {
-		starts[i] = 0; 
+		starts[i] = 0;
 		counts[i] = dims[var->dim_ids[i]].length;
 	}
-	counts[0] = 1; // We are only pulling the first Time cube of data from the next file for interp. 
+	counts[0] = 1; // We are only pulling the first Time cube of data from the next file for interp.
 
 	/* Since the variables are the same, grab the same ID and put it into our var_next->data */
 	if ((retval = nc_get_vara_float(next, var->id, starts, counts, (float *) var_next->data)))
@@ -393,7 +393,7 @@ void skeleton_variable_fill(int copy, int num_vars, Variable* vars, Dimension ti
 
 		// divide minutes by 360 (6 hours), then multiply by decimal increment (6.0 for 6 hours in time dimension in file)
 		min_elapsed = (i % NUM_GRAINS) * TEMPORAL_GRANULARITY;
-		decimal_conversion = DAILY_4X * (min_elapsed / 360.0); 
+		decimal_conversion = DAILY_4X * (min_elapsed / 360.0);
 		time_new[i] = time_orig[i / NUM_GRAINS] +  decimal_conversion;
 		// printf("time_orig[%lu / %d] = %f. time_new[%lu] = %f\n", i, NUM_GRAINS, time_orig[i / NUM_GRAINS], i, time_new[i]);
 	}
@@ -409,7 +409,7 @@ void temporal_interpolate(int copy, int next, Variable* orig, Variable* interp, 
 
 	/* All dimensions run from [0, dim_length) except for Time, which will be [0, 1) */
 	for (int i = 0; i < interp->num_dims; i++) {
-		starts[i] = 0; 
+		starts[i] = 0;
 		counts[i] = dims[interp->dim_ids[i]].length;
 	}
 	counts[0] = 1; // In the Time dimension, we only want to do ONE count at a time.
@@ -425,7 +425,7 @@ void temporal_interpolate(int copy, int next, Variable* orig, Variable* interp, 
 				for (lat = 0; lat < dims[DIM_ID_LAT].length; lat++) {
 					for (lon = 0; lon < dims[DIM_ID_LON].length; lon++) {
 						x_idx = ___access_nc_array(time, lvl, lat, lon);
-						
+
 						/* Standard case is else branch. if branch has redundant calculation, but maintained for clarity */
 						if (time == dims[DIM_ID_TIME].length - 1) {
 							y_idx = ___access_nc_array(0, lvl, lat, lon);
