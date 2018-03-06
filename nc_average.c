@@ -331,12 +331,11 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
     Variable output;
 
     // TODO: figure out if memcpy operation (nc_interp.c:82) is necessary
+    // YES IT IS LOL
     memcpy(&output, &vars[VAR_ID_SPECIAL], sizeof(Variable));
-    output.data = malloc(sizeof(float) * TIME_STRIDE);
-    if (output.data == NULL) {
-        fprintf(stderr, "Failed to allocate memory for output data variable\n");
-        return 1;
-    }
+
+
+    printf("Okay, try?: %f\n", ((float *) output.data)[0]);
 
     /* Potentially necessary files if specifying Jan or Dec */
     char prev_file[256];
@@ -353,6 +352,12 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
     /* Calibrate [start, end] range */
     time_start = DAY_STRIDE * preceding_days + tgt_hour; // Find start day idx, adjust for target hour
     time_end   = DAY_STRIDE * (preceding_days + total_days) + tgt_hour; // Adjust end time as wells
+    output.data = malloc(sizeof(float) * TIME_STRIDE);
+    if (output.data == NULL) {
+        fprintf(stderr, "Failed to allocate memory for output data variable\n");
+        return 1;
+    }
+
 
     /* Find index and 15 degree bin (time zone) of the input longitude */
     if (find_longitude(&tgt_lon_idx, &tgt_lon_bin, tgt_lon)) {
@@ -384,15 +389,16 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
                     }
 
                     src_idx = ___access_nc_array(time - TIME_ZONE_OFFSET[cur_lon_bin], lvl, lat, lon);
-                    dst_idx = ___access_nc_array(time, lvl, lat, lon);
+                    dst_idx = ___access_nc_array(0, lvl, lat, lon);
 
-                    if (lvl == 0 ) {
+                    if (lvl == 0 && lat == 0) {
                         printf("%lu -> %s[%lu]...[%lu][%lu] = [%lu] = %f -->> [%lu]\n", INPUT_YEAR, vars[VAR_ID_SPECIAL].name,
                             time - TIME_ZONE_OFFSET[cur_lon_bin], lat, lon, src_idx, var_data[src_idx], dst_idx);
                     }
 
                     // TODO: segfaults here. not sure why
-                    // output_data[dst_idx] = var_data[src_idx];
+                    output_data[dst_idx] = var_data[src_idx];
+                    // printf("\toutput[%lu] = %f\n", dst_idx, output_data[dst_idx]);
                 }
             }
         }
