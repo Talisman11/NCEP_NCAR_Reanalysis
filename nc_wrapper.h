@@ -86,10 +86,10 @@ int invalid_file(char* name);
 void concat_names(struct dirent* dir_entry_cur, struct dirent* dir_entry_next);
 
 /* Ensure the Variable names of the files are the same to avoid contaminating interpolation data */
-int verify_next_file_variable(int copy, int next, Variable* var, Variable* var_next, Dimension* dims);
+int verify_next_file_variable(int next, Variable* var, Variable* var_next, Dimension* dims);
 
 /* Abstraction function for configuring the chunk sizes in the special variable */
-void configure_special_chunks(Dimension* dims, size_t* special_chunks);
+void configure_special_chunks(Dimension* dims, size_t* special_chunks, int time_grains);
 
 /* Passes desired variables to compression functions */
 void variable_compression(int ncid, int timeid, const size_t* time_chunks, int specialid, const size_t* special_chunks);
@@ -100,12 +100,12 @@ size_t time_dimension_adjust(size_t original_length);
 /* Write Time, Level, Lat, Lon values for new file (same values except for Time dim) */
 void skeleton_variable_fill(int copy, int num_vars, Variable* vars, Dimension time_interp);
 
-/* Perform interpolation for the desired variable 
- * copy 	- file handle of new interpolated file 
- * next 	- file handle of NetCDF file that is (intended to be) the following year 
- * var 		- pointer to struct holding data of our current input file 
- * interp 	- pointer to data for our interpolated Variable 
- * var_next - pointer to data of the next input file 
+/* Perform interpolation for the desired variable
+ * copy 	- file handle of new interpolated file
+ * next 	- file handle of NetCDF file that is (intended to be) the following year
+ * var 		- pointer to struct holding data of our current input file
+ * interp 	- pointer to data for our interpolated Variable
+ * var_next - pointer to data of the next input file
  * dims 	- pointer to array of struct Dimensions */
 void temporal_interpolate(int copy, int next, Variable* var, Variable* interp, Variable* var_next, Dimension* dims);
 

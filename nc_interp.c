@@ -65,8 +65,8 @@ int primary_function() {
     ___nc_open(FILE_NEXT, &file_id_next);
     var_next.data = malloc(sizeof(float) * (TIME_STRIDE));
 
-    if (verify_next_file_variable(file_id_cur, file_id_next, &vars[VAR_ID_SPECIAL], &var_next, dims)) {
-        printf("Warning: FILE_CUR var '%s' does not match FILE_NEXT var '%s'. Breaking out.\n", 
+    if (verify_next_file_variable(file_id_next, &vars[VAR_ID_SPECIAL], &var_next, dims)) {
+        printf("Warning: FILE_CUR var '%s' does not match FILE_NEXT var '%s'. Breaking out.\n",
             vars[VAR_ID_SPECIAL].name, var_next.name);
         return 1;
     }
@@ -101,7 +101,7 @@ int primary_function() {
     }
 
     /* Add chunking for time and special variable, and shuffle and deflate for the special */
-    configure_special_chunks(dims, SPECIAL_CHUNKS);
+    configure_special_chunks(dims, SPECIAL_CHUNKS, NUM_GRAINS);
 
     variable_compression(copy_id, VAR_ID_TIME, TIME_CHUNK, VAR_ID_SPECIAL, SPECIAL_CHUNKS);
 
@@ -113,12 +113,12 @@ int primary_function() {
 
     temporal_interpolate(copy_id, file_id_next, &vars[VAR_ID_SPECIAL], &var_interp, &var_next, dims);
 
-    clean_up(num_vars, vars, var_interp, dims); 
+    clean_up(num_vars, vars, var_interp, dims);
 
     nc_close(file_id_cur);
     nc_close(copy_id); // There is a memory leak of 64B from creating and closing the COPY. NetCDF problems...
 
-    return 0; 
+    return 0;
 }
 
 int main(int argc, char *argv[]) {
@@ -126,7 +126,7 @@ int main(int argc, char *argv[]) {
     struct dirent **dir_list;
 
     if (process_arguments(argc, argv)) {
-        printf("Program usage: %s\n", argv[0]); 
+        printf("Program usage: %s\n", argv[0]);
         printf("\t-t [temporal granularity] -i [input directory] -d [delete flag; no args]\n");
         printf("\t-o [output directory] -p [output FILE_CUR prefix] -s [output FILE_CUR suffix] -v [verbose; no args]\n");
         exit(1);

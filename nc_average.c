@@ -2,11 +2,19 @@
 #include <math.h>
 #include <string.h>
 
+int retval;
 int input_dir_flag = 0;
 int output_dir_flag = 0;
 char input_file_name[256];
 char input_file_path[256];
 char output_file[256];
+
+char prev_file_path[256];
+char prev_file_name[256];
+char next_file_path[256];
+char next_file_name[256];
+
+int INPUT_FILE_ID, OUTPUT_FILE_ID, PREV_FILE_ID, NEXT_FILE_ID;
 
 extern int disable_clobber;
 extern int enable_verbose;
@@ -15,10 +23,6 @@ extern char output_dir[];
 extern char prefix[];
 extern char suffix[];
 
-extern char FILE_CUR[];
-extern char FILE_NEXT[];
-extern char COPY[];
-
 /* Special indexing variables */
 extern int VAR_ID_TIME, VAR_ID_LVL, VAR_ID_LAT, VAR_ID_LON, VAR_ID_SPECIAL;
 extern int DIM_ID_TIME, DIM_ID_LVL, DIM_ID_LAT, DIM_ID_LON;
@@ -26,6 +30,7 @@ extern int DIM_ID_TIME, DIM_ID_LVL, DIM_ID_LAT, DIM_ID_LON;
 extern size_t TIME_STRIDE;
 extern size_t LVL_STRIDE;
 extern size_t LAT_STRIDE;
+extern size_t SPECIAL_CHUNKS[4];
 
 /* Global variables specified by user */
 double INPUT_LAT, INPUT_LON;
@@ -33,10 +38,11 @@ int INPUT_YEAR, INPUT_MONTH, INPUT_HOUR;
 
 Variable *vars;
 Dimension *dims;
-int INPUT_FILE_ID, OUTPUT_FILE_ID, NUM_VARS, NUM_DIMS;
+int NUM_VARS, NUM_DIMS;
 
 int LEAP_YEAR;
 size_t DAY_STRIDE;
+size_t HOURS_IN_DAY[] = {24};
 int TIME_ZONE[25] = {-12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, \
                     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
 int TIME_ZONE_OFFSET[25] = { 0 };
@@ -311,6 +317,9 @@ void prepare_output_file(const char* output_dir, const char* file_name, const ch
     for (int i = 0; i < NUM_VARS; i++) {
         ___nc_def_var(OUTPUT_FILE_ID, vars[i]);
     }
+    /* Add chunking for time and special variable, and shuffle and deflate for the special */
+    configure_special_chunks(dims, SPECIAL_CHUNKS, HOURS_IN_DAY[0]);
+    variable_compression(OUTPUT_FILE_ID, VAR_ID_TIME, HOURS_IN_DAY, VAR_ID_SPECIAL, SPECIAL_CHUNKS);
 
     nc_enddef(OUTPUT_FILE_ID);
 
@@ -324,18 +333,39 @@ void prepare_output_file(const char* output_dir, const char* file_name, const ch
     printf("Created output file: %s with id %d (input_id: %d)\n", output_file, OUTPUT_FILE_ID, INPUT_FILE_ID);
 }
 
+int load_buffer_file(int file_id, Variable* var, Variable* var_new, Dimension* dims) {
+    int num_dims, num_vars;
+    Dimension* temp_dims;
+    Variable* temp_vars;
+
+    nc_inq(file_id, &num_dims, &num_vars, NULL, NULL);
+
+    temp_dims = (Dimension *) malloc(num_dims * sizeof(Dimension));
+    for (int i = 0; i < num_dims; i++) {
+        ___nc_inq_dim(file_id, i, &temp_dims[i]);
+    }
+
+    temp_vars = (Variable *) malloc(num_vars * sizeof(Variable));
+    for (int i = 0; i < num_vars; i++) {
+        ___nc_inq_var(file_id, i, &temp_vars[i], temp_dims);
+    }
+
+    printf("Loading variable data for buffer region\n");
+    for (int i = 0; i < num_vars; i++) {
+        ___nc_get_var_array(file_id, i, &temp_vars[i], temp_dims);
+    }
+
+
+}
+
 int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
     size_t time, lvl, lat, lon, src_idx, dst_idx;
-    size_t time_start, time_end, tgt_lon_idx, tgt_lon_bin, cur_lon_bin;
-    float *lon_data, *var_data, *output_data;
-    Variable output;
-
-    // TODO: figure out if memcpy operation (nc_interp.c:82) is necessary
-    // YES IT IS LOL
-    memcpy(&output, &vars[VAR_ID_SPECIAL], sizeof(Variable));
-
-
-    printf("Okay, try?: %f\n", ((float *) output.data)[0]);
+    size_t tgt_lon_idx, tgt_lon_bin, cur_lon_bin;
+    size_t starts[vars[VAR_ID_SPECIAL].num_dims];
+	size_t counts[vars[VAR_ID_SPECIAL].num_dims];
+    int time_start, time_end, pre_diff, post_diff, time_offset;
+    float *lon_data, *var_data, *output_data, *prev_data, *next_data, tgt_data;
+    Variable output, prev, next;
 
     /* Potentially necessary files if specifying Jan or Dec */
     char prev_file[256];
@@ -352,12 +382,6 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
     /* Calibrate [start, end] range */
     time_start = DAY_STRIDE * preceding_days + tgt_hour; // Find start day idx, adjust for target hour
     time_end   = DAY_STRIDE * (preceding_days + total_days) + tgt_hour; // Adjust end time as wells
-    output.data = malloc(sizeof(float) * TIME_STRIDE);
-    if (output.data == NULL) {
-        fprintf(stderr, "Failed to allocate memory for output data variable\n");
-        return 1;
-    }
-
 
     /* Find index and 15 degree bin (time zone) of the input longitude */
     if (find_longitude(&tgt_lon_idx, &tgt_lon_bin, tgt_lon)) {
@@ -372,13 +396,55 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
         printf("tz[%d] = %d\n", i, TIME_ZONE_OFFSET[i]);
     }
 
-    printf("start: %lu, end: %lu, day_stride: %lu, tgt_hour: %d\n", time_start, time_end, DAY_STRIDE, tgt_hour);
-    printf("tgt_lon: %f, tgt_lon_idx: %lu, tgt_lon_bin: %lu\n", tgt_lon, tgt_lon_idx, tgt_lon_bin);
+    /* Check if the arguments require the preceding file */
+    pre_diff = time_start - TIME_ZONE_OFFSET[24];
+    post_diff = time_end - TIME_ZONE_OFFSET[0];
+    printf("Time pre: %d\n", pre_diff);
+    if (pre_diff < 0) {
+        printf("Time dimension initial indices less than zero in Eastward direction (likely due to January selection).\n\
+        Searching for previous year .nc file in directory\n");
+        find_target_file(prev_file_path, prev_file_name, input_dir, INPUT_YEAR - 1);
+
+        ___nc_open(prev_file_path, &PREV_FILE_ID);
+        load_buffer_file(PREV_FILE_ID, &vars[VAR_ID_SPECIAL], &prev, dims);
+        // if (verify_next_file_variable(PREV_FILE_ID, &vars[VAR_ID_SPECIAL], &prev, dims)) {
+            // printf("Warning: INPUT_FILE var '%s' does not match PREV_FILE var '%s'. Breaking out.\n",
+                // vars[VAR_ID_SPECIAL].name, prev.name);
+            // return 1;
+        // }
+    }
+
+    /* Check if require superseding file */
+    printf("Time post: %d\n", post_diff);
+    if (post_diff > dims[DIM_ID_TIME].length) {
+        printf("Time dimension final indices greater than length of .nc file in Westward direction (likely due to December selection).\n\
+        Searching for next year .nc file in directory\n");
+        find_target_file(next_file_path, next_file_name, input_dir, INPUT_YEAR + 1);
+    }
+
+    // printf("start: %lu, end: %lu, day_stride: %lu, tgt_hour: %d\n", time_start, time_end, DAY_STRIDE, tgt_hour);
+    // printf("tgt_lon: %f, tgt_lon_idx: %lu, tgt_lon_bin: %lu\n", tgt_lon, tgt_lon_idx, tgt_lon_bin);
+
+    /* All dimensions run from [0, dim_length) except for Time, which will be length 1 */
+    memcpy(&output, &vars[VAR_ID_SPECIAL], sizeof(Variable));
+    if (NULL == (output.data = malloc(sizeof(float) * TIME_STRIDE))) {
+        fprintf(stderr, "Failed to allocate memory for output data variable\n");
+        return 1;
+    }
+
+    /* Initialize start indices and counters for each dimension for later call to nc_put_vara_float */
+    for (int i = 0; i < vars[VAR_ID_SPECIAL].num_dims; i++) {
+        starts[i] = 0;
+        counts[i] = dims[vars[VAR_ID_SPECIAL].dim_ids[i]].length;
+    }
+    counts[0] = 1; // In the Time dimension, we are only doing 1 cube at a time
 
     /* Start processing */
     lon_data = vars[VAR_ID_LON].data;
     var_data = vars[VAR_ID_SPECIAL].data;
     output_data = output.data;
+    prev_data = prev.data;
+    next_data = next.data;
     for (time = time_start; time < time_end && time < dims[DIM_ID_TIME].length; time++) {
         printf("TIME: %lu\n", time);
         for (lvl = 0; lvl < dims[DIM_ID_LVL].length; lvl++) {
@@ -388,20 +454,39 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
                         cur_lon_bin += 1;
                     }
 
-                    src_idx = ___access_nc_array(time - TIME_ZONE_OFFSET[cur_lon_bin], lvl, lat, lon);
-                    dst_idx = ___access_nc_array(0, lvl, lat, lon);
+                    time_offset = time - TIME_ZONE_OFFSET[cur_lon_bin];
+                    if (time_offset < 0) {
+                        time_offset = dims[DIM_ID_TIME].length + time_offset;
+                        printf("Adjusted time_offset = %d\n", time_offset);
 
-                    if (lvl == 0 && lat == 0) {
-                        printf("%lu -> %s[%lu]...[%lu][%lu] = [%lu] = %f -->> [%lu]\n", INPUT_YEAR, vars[VAR_ID_SPECIAL].name,
-                            time - TIME_ZONE_OFFSET[cur_lon_bin], lat, lon, src_idx, var_data[src_idx], dst_idx);
+                        src_idx = ___access_nc_array(time_offset, lvl, lat, lon);
+                        tgt_data = prev_data[src_idx];
+                    } else if (time_offset > dims[DIM_ID_TIME].length) {
+                        time_offset = -1 * time_offset;
+                        printf("Adjusted time_offset = %d\n", time_offset);
+
+                        src_idx = ___access_nc_array(time_offset, lvl, lat, lon);
+                        tgt_data = next_data[src_idx];
+                    } else {
+                        src_idx = ___access_nc_array(time_offset, lvl, lat, lon);
+                        tgt_data = var_data[src_idx];
                     }
 
-                    // TODO: segfaults here. not sure why
-                    output_data[dst_idx] = var_data[src_idx];
-                    // printf("\toutput[%lu] = %f\n", dst_idx, output_data[dst_idx]);
+
+                    // if (lvl == 0 && lat == 0) {
+                    //     printf("%lu -> %s[%lu]...[%lu][%lu] = [%lu] = %f -->> [%lu]\n", INPUT_YEAR, vars[VAR_ID_SPECIAL].name,
+                    //         time - TIME_ZONE_OFFSET[cur_lon_bin], lat, lon, src_idx, var_data[src_idx], dst_idx);
+                    // }
+                    dst_idx = ___access_nc_array(0, lvl, lat, lon);
+                    output_data[dst_idx] = tgt_data;
                 }
             }
         }
+
+        starts[0] = time;
+
+        if ((retval = nc_put_vara_float(OUTPUT_FILE_ID, output.id, starts, counts, output_data)))
+            NC_ERR(retval);
     }
 
     nc_close(INPUT_FILE_ID);
@@ -433,6 +518,8 @@ int main(int argc, char* argv[]) {
 
     load_nc_file(input_file_path);
     prepare_output_file(output_dir, input_file_name, suffix);
+
+
 
     if (gather(INPUT_LON, INPUT_HOUR, preceding_days, total_days)) {
         printf("Gather function failed\n");

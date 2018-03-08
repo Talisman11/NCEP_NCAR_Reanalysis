@@ -322,7 +322,7 @@ void concat_names(struct dirent *dir_entry_cur, struct dirent *dir_entry_next) {
         printf("Output  COPY:      %s\n", COPY);
 }
 
-int verify_next_file_variable(int copy, int next, Variable* var, Variable* var_next, Dimension* dims) {
+int verify_next_file_variable(int next, Variable* var, Variable* var_next, Dimension* dims) {
 	int num_dims, num_vars;
 	size_t starts[var->num_dims];
 	size_t counts[var->num_dims];
@@ -349,22 +349,11 @@ int verify_next_file_variable(int copy, int next, Variable* var, Variable* var_n
 	return 0;
 }
 
-void configure_special_chunks(Dimension* dims, size_t* special_chunks) {
-	// int chunk_multiplier;
-
-	// if (dims[DIM_ID_TIME].length == 1460) {
-	// 	chunk_multiplier = CHUNK_STANDARD_YEAR[manual_chunk_level];
-	// } else if (dims[DIM_ID_TIME].length == 1464) {
-	// 	chunk_multiplier = CHUNK_LEAP_YEAR[manual_chunk_level];
-	// } else {
-	// 	printf("File's time is not 1460 or 1464. Setting Chunk Multiplier to 1\n");
-	// 	chunk_multiplier = CHUNK_STANDARD_YEAR[0];
-	// }
-
-    SPECIAL_CHUNKS[0] = NUM_GRAINS; // i.e. 360 / 15 minutes = 24 cubes, so use 24 for chunking
-    SPECIAL_CHUNKS[1] = dims[DIM_ID_LVL].length;
-    SPECIAL_CHUNKS[2] = dims[DIM_ID_LAT].length;
-    SPECIAL_CHUNKS[3] = dims[DIM_ID_LON].length;
+void configure_special_chunks(Dimension* dims, size_t* special_chunks, int time_grains) {
+    special_chunks[0] = time_grains; // i.e. 360 / 15 minutes = 24 cubes, so use 24 for chunking
+    special_chunks[1] = dims[DIM_ID_LVL].length;
+    special_chunks[2] = dims[DIM_ID_LAT].length;
+    special_chunks[3] = dims[DIM_ID_LON].length;
 }
 
 void variable_compression(int ncid, int timeid, const size_t* time_chunks, int specialid, const size_t* special_chunks) {
