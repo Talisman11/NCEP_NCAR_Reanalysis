@@ -3,13 +3,13 @@ QUERY = nc_query.o nc_wrapper.o
 AVERAGE = nc_average.o nc_wrapper.o
 CRAY_CC = cc
 NETCDF_FLAGS = -lm -lnetcdf
-CFLAGS += -g -O3
+CFLAGS += -g -O0
 R_NAME = reanalysis
 Q_NAME = query
 A_NAME = average
 
 reanalysis: $(REANALYSIS)
-	$(CRAY_CC) $(CFLAGS) $(REANALYSIS) -o $(R_NAME) $(NETCDF_FLAGS) 
+	$(CRAY_CC) $(CFLAGS) $(REANALYSIS) -o $(R_NAME) $(NETCDF_FLAGS)
 
 query: $(QUERY)
 	$(CRAY_CC) $(CFLAGS) $(QUERY) -o $(Q_NAME) $(NETCDF_FLAGS)
