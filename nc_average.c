@@ -334,24 +334,24 @@ void prepare_output_file(const char* output_dir, const char* file_name, const ch
 }
 
 // TODO: INIT the PREV and NEXT files correctly
-int populate_buffer_file(int file_id, Variable* buffer_vars, Dimension* buffer_dims) {
+int populate_buffer_file(int file_id, Variable** buffer_vars, Dimension** buffer_dims) {
     int num_dims, num_vars;
 
     nc_inq(file_id, &num_dims, &num_vars, NULL, NULL);
 
-    buffer_dims = (Dimension *) malloc(num_dims * sizeof(Dimension));
+    *buffer_dims = (Dimension *) malloc(num_dims * sizeof(Dimension));
     for (int i = 0; i < num_dims; i++) {
-        ___nc_inq_dim(file_id, i, &buffer_dims[i]);
+        ___nc_inq_dim(file_id, i, buffer_dims[i]);
     }
 
-    buffer_vars = (Variable *) malloc(num_vars * sizeof(Variable));
+    *buffer_vars = (Variable *) malloc(num_vars * sizeof(Variable));
     for (int i = 0; i < num_vars; i++) {
-        ___nc_inq_var(file_id, i, &buffer_vars[i], buffer_dims);
+        ___nc_inq_var(file_id, i, buffer_vars[i], *buffer_dims);
     }
 
     printf("Loading variable data for buffer region\n");
     for (int i = 0; i < num_vars; i++) {
-        ___nc_get_var_array(file_id, i, &buffer_vars[i], buffer_dims);
+        ___nc_get_var_array(file_id, i, buffer_vars[i], *buffer_dims);
     }
 }
 
@@ -404,7 +404,10 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
         find_target_file(prev_file_path, prev_file_name, input_dir, INPUT_YEAR - 1);
 
         ___nc_open(prev_file_path, &PREV_FILE_ID);
-        populate_buffer_file(PREV_FILE_ID, prev_vars, prev_dims);
+        // TODO: prev_vars gets passed in and populated correctly within the function,
+        // but on exit, accessing prev_vars we still have no data, hence the segfault
+
+        populate_buffer_file(PREV_FILE_ID, &prev_vars, &prev_dims);
         prev_data = prev_vars[VAR_ID_SPECIAL].data;
     }
 
@@ -415,9 +418,9 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
         Searching for next year .nc file in directory\n");
         find_target_file(next_file_path, next_file_name, input_dir, INPUT_YEAR + 1);
 
-        ___nc_open(next_file_path, &NEXT_FILE_ID);
-        populate_buffer_file(NEXT_FILE_ID, next_vars, next_dims);
-        next_data = next_vars[VAR_ID_SPECIAL].data;
+        // ___nc_open(next_file_path, &NEXT_FILE_ID);
+        // populate_buffer_file(NEXT_FILE_ID, next_vars, next_dims);
+        // next_data = next_vars[VAR_ID_SPECIAL].data;
 
     }
 
@@ -526,3 +529,10 @@ int main(int argc, char* argv[]) {
     printf("Averaging program completed successfully.\n");
     return 0;
 }
+
+
+// TODO: average of each month -> 31 days of this hourly "average" should be converted to 1 value
+// --- 744 x 17 x 73 x 144 -> 1 x 17 x 73 x 744.
+// First give Yizhe the average for 2 months
+// --- Ultimately want the average for each months
+// --- Then the averrage of a year from these averages
