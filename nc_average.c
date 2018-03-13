@@ -37,7 +37,7 @@ double INPUT_LAT, INPUT_LON;
 int INPUT_YEAR, INPUT_MONTH, INPUT_HOUR;
 
 Variable *vars, *prev_vars;
-Dimension *dims;
+Dimension *dims, *prev_dims;
 int NUM_VARS, NUM_DIMS;
 
 int LEAP_YEAR;
@@ -341,17 +341,17 @@ int populate_buffer_file(int file_id, Variable** buffer_vars, Dimension** buffer
 
     *buffer_dims = (Dimension *) malloc(num_dims * sizeof(Dimension));
     for (int i = 0; i < num_dims; i++) {
-        ___nc_inq_dim(file_id, i, buffer_dims[i]);
+        ___nc_inq_dim(file_id, i, &(*buffer_dims)[i]);
     }
 
     *buffer_vars = (Variable *) malloc(num_vars * sizeof(Variable));
     for (int i = 0; i < num_vars; i++) {
-        ___nc_inq_var(file_id, i, buffer_vars[i], *buffer_dims);
+        ___nc_inq_var(file_id, i, &(*buffer_vars)[i], *buffer_dims);
     }
 
     printf("Loading variable data for buffer region\n");
     for (int i = 0; i < num_vars; i++) {
-        ___nc_get_var_array(file_id, i, buffer_vars[i], *buffer_dims);
+        ___nc_get_var_array(file_id, i, &(*buffer_vars)[i], *buffer_dims);
     }
 }
 
@@ -363,7 +363,7 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
     int time_start, time_end, pre_diff, post_diff, time_offset;
     float *lon_data, *var_data, *output_data, *prev_data, *next_data, tgt_data;
     Variable output, *next_vars;
-    Dimension *prev_dims, *next_dims;
+    Dimension *next_dims;
 
     /* Potentially necessary files if specifying Jan or Dec */
     char prev_file[256];
