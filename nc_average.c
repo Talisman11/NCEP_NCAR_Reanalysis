@@ -333,8 +333,7 @@ void prepare_output_file(const char* output_dir, const char* file_name, const ch
     printf("Created output file: %s with id %d (input_id: %d)\n", output_file, OUTPUT_FILE_ID, INPUT_FILE_ID);
 }
 
-// TODO: INIT the PREV and NEXT files correctly
-int populate_buffer_file(int file_id, Variable** buffer_vars, Dimension** buffer_dims) {
+void populate_buffer_file(int file_id, Variable** buffer_vars, Dimension** buffer_dims) {
     int num_dims, num_vars;
 
     nc_inq(file_id, &num_dims, &num_vars, NULL, NULL);
@@ -417,7 +416,7 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
 
         ___nc_open(next_file_path, &NEXT_FILE_ID);
         populate_buffer_file(NEXT_FILE_ID, &next_vars, &next_dims);
-        next_data = next_vars[VAR_ID_SPECIAL].data
+        next_data = next_vars[VAR_ID_SPECIAL].data;
     }
 
     // printf("start: %lu, end: %lu, day_stride: %lu, tgt_hour: %d\n", time_start, time_end, DAY_STRIDE, tgt_hour);
@@ -457,7 +456,7 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
                         src_idx = ___access_nc_array(time_offset, lvl, lat, lon);
                         tgt_data = prev_data[src_idx];
                     } else if (time_offset > dims[DIM_ID_TIME].length) {
-                        time_offset = -1 * time_offset - dims[DIM_ID_TIME].length; // Subtract the length of THIS file's TIME
+                        time_offset = dims[DIM_ID_TIME].length - time_offset; // Subtract the length of THIS file's TIME
                         printf("next: offset: %d\n", time_offset);
 
                         src_idx = ___access_nc_array(time_offset, lvl, lat, lon);
