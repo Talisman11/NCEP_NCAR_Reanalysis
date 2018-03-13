@@ -404,9 +404,6 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
         find_target_file(prev_file_path, prev_file_name, input_dir, INPUT_YEAR - 1);
 
         ___nc_open(prev_file_path, &PREV_FILE_ID);
-        // TODO: prev_vars gets passed in and populated correctly within the function,
-        // but on exit, accessing prev_vars we still have no data, hence the segfault
-
         populate_buffer_file(PREV_FILE_ID, &prev_vars, &prev_dims);
         prev_data = prev_vars[VAR_ID_SPECIAL].data;
     }
@@ -418,16 +415,15 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
         Searching for next year .nc file in directory\n");
         find_target_file(next_file_path, next_file_name, input_dir, INPUT_YEAR + 1);
 
-        // ___nc_open(next_file_path, &NEXT_FILE_ID);
-        // populate_buffer_file(NEXT_FILE_ID, next_vars, next_dims);
-        // next_data = next_vars[VAR_ID_SPECIAL].data;
-
+        ___nc_open(next_file_path, &NEXT_FILE_ID);
+        populate_buffer_file(NEXT_FILE_ID, &next_vars, &next_dims);
+        next_data = next_vars[VAR_ID_SPECIAL].data
     }
 
     // printf("start: %lu, end: %lu, day_stride: %lu, tgt_hour: %d\n", time_start, time_end, DAY_STRIDE, tgt_hour);
     // printf("tgt_lon: %f, tgt_lon_idx: %lu, tgt_lon_bin: %lu\n", tgt_lon, tgt_lon_idx, tgt_lon_bin);
 
-    // Init 'output' Variable struct based off input variable.
+    /* Init 'output' Variable struct based off input variable. */
     memcpy(&output, &vars[VAR_ID_SPECIAL], sizeof(Variable));
     if (NULL == (output.data = malloc(sizeof(float) * TIME_STRIDE))) {
         fprintf(stderr, "Failed to allocate memory for output data variable\n");
@@ -456,14 +452,13 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
 
                     time_offset = time - TIME_ZONE_OFFSET[cur_lon_bin];
                     if (time_offset < 0) {
-                        time_offset = dims[DIM_ID_TIME].length + time_offset;
-                        printf("Adjusted time_offset = %d\n", time_offset);
+                        time_offset = prev_dims[DIM_ID_TIME].length + time_offset; // Access the tail of the PREV file's TIME
 
                         src_idx = ___access_nc_array(time_offset, lvl, lat, lon);
                         tgt_data = prev_data[src_idx];
                     } else if (time_offset > dims[DIM_ID_TIME].length) {
-                        time_offset = -1 * time_offset;
-                        printf("Adjusted time_offset = %d\n", time_offset);
+                        time_offset = -1 * time_offset - dims[DIM_ID_TIME].length; // Subtract the length of THIS file's TIME
+                        printf("next: offset: %d\n", time_offset);
 
                         src_idx = ___access_nc_array(time_offset, lvl, lat, lon);
                         tgt_data = next_data[src_idx];
