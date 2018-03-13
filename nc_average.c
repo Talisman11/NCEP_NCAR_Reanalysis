@@ -456,7 +456,7 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
                         src_idx = ___access_nc_array(time_offset, lvl, lat, lon);
                         tgt_data = prev_data[src_idx];
                     } else if (time_offset > dims[DIM_ID_TIME].length) {
-                        time_offset = dims[DIM_ID_TIME].length - time_offset; // Subtract the length of THIS file's TIME
+                        time_offset = time_offset - dims[DIM_ID_TIME].length; // Subtract the length of THIS file's TIME
                         printf("next: offset: %d\n", time_offset);
 
                         src_idx = ___access_nc_array(time_offset, lvl, lat, lon);
