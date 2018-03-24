@@ -33,7 +33,7 @@ extern size_t LAT_STRIDE;
 extern size_t SPECIAL_CHUNKS[4];
 
 /* Global variables specified by user */
-double INPUT_LAT, INPUT_LON;
+double INPUT_LON;
 int INPUT_YEAR, INPUT_MONTH, INPUT_HOUR;
 
 Variable *vars, *prev_vars;
@@ -50,14 +50,11 @@ int TIME_ZONE_OFFSET[25] = { 0 };
 int process_average_arguments(int argc, char* argv[]) {
     int opt;
 
-    INPUT_LAT = INPUT_LON = -1000.0;
+    INPUT_LON = -1000.0;
     INPUT_YEAR = INPUT_MONTH = INPUT_HOUR = -1;
-    while ((opt = getopt(argc, argv, "r:c:y:m:h:i:f:n:o:p:s:dv")) != -1) {
+    while ((opt = getopt(argc, argv, "c:y:m:h:i:f:n:o:p:s:dv")) != -1) {
         switch(opt) {
             /* Primary user arguments prefixed with 'INPUT_' */
-            case 'r': /* Latitude */
-                INPUT_LAT = atof(optarg);
-                break;
             case 'c': /* Longitude */
                 INPUT_LON = atof(optarg);
                 break;
@@ -95,12 +92,6 @@ int process_average_arguments(int argc, char* argv[]) {
     }
 
     /* NCAR/NCEP Reanalysis - Latitude: [-90.0, 90.0]; Longitude: [0, 357.5] degrees */
-    if (INPUT_LAT < -90.0 || INPUT_LAT > 90.0 || fmod(INPUT_LAT, 2.5) != 0.0) {
-        fprintf(stderr, "Latitude invalid (%f). \
-            Accepts values in [-90.0, 90.0] range as multiples of 2.5 degrees\n", INPUT_LAT);
-        return 1;
-    }
-
     if (INPUT_LON < 0.0 || INPUT_LON > 357.5 || fmod(INPUT_LON, 2.5) != 0.0) {
         fprintf(stderr, "Longitude invalid (%f). \
             Accepts values in [0, 357.5] range as multiples of 2.5 degrees\n", INPUT_LON);
@@ -137,7 +128,6 @@ int process_average_arguments(int argc, char* argv[]) {
     }
 
     printf("Program proceeding with:\n");
-    printf("\tLatitude: %f\n", INPUT_LAT);
     printf("\tLongitude: %f\n", INPUT_LON);
     printf("\tYear | Month | Hour: %d | %d | %d\n", INPUT_YEAR, INPUT_MONTH, INPUT_HOUR);
     printf("\tDisable clobbering = %d\n", disable_clobber);
@@ -186,7 +176,7 @@ int extract_year(int* year, const char* file_name) {
     const char period = '.';
     char *copy, *last_per, *sec_per;
 
-    // Create copy of file_name for extraction
+    /* Create copy of file_name to consume and extract */
     copy = (char *) malloc(sizeof(char) * (strlen(file_name) + 1));
     strcpy(copy, file_name);
 
@@ -277,14 +267,12 @@ void load_nc_file(const char* file_path) {
     nc_inq(INPUT_FILE_ID, &NUM_DIMS, &NUM_VARS, NULL, NULL);
 
     /* Output Dimension Information */
-    // printf("DIMENSION INFO:\n");
     dims = (Dimension *) malloc(NUM_DIMS * sizeof(Dimension));
     for (int i = 0; i < NUM_DIMS; i++) {
         ___nc_inq_dim(INPUT_FILE_ID, i, &dims[i]);
     }
 
     /* Output Variable Information */
-    // printf("VARIABLE INFO:\n");
     vars = (Variable *) malloc(NUM_VARS * sizeof(Variable));
     for (int i = 0; i < NUM_VARS; i++) {
         ___nc_inq_var(INPUT_FILE_ID, i, &vars[i], dims);
@@ -419,9 +407,6 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
         next_data = next_vars[VAR_ID_SPECIAL].data;
     }
 
-    // printf("start: %lu, end: %lu, day_stride: %lu, tgt_hour: %d\n", time_start, time_end, DAY_STRIDE, tgt_hour);
-    // printf("tgt_lon: %f, tgt_lon_idx: %lu, tgt_lon_bin: %lu\n", tgt_lon, tgt_lon_idx, tgt_lon_bin);
-
     /* Init 'output' Variable struct based off input variable. */
     memcpy(&output, &vars[VAR_ID_SPECIAL], sizeof(Variable));
     if (NULL == (output.data = malloc(sizeof(float) * TIME_STRIDE))) {
@@ -466,11 +451,6 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
                         tgt_data = var_data[src_idx];
                     }
 
-
-                    // if (lvl == 0 && lat == 0) {
-                    //     printf("%lu -> %s[%lu]...[%lu][%lu] = [%lu] = %f -->> [%lu]\n", INPUT_YEAR, vars[VAR_ID_SPECIAL].name,
-                    //         time - TIME_ZONE_OFFSET[cur_lon_bin], lat, lon, src_idx, var_data[src_idx], dst_idx);
-                    // }
                     dst_idx = ___access_nc_array(0, lvl, lat, lon);
                     output_data[dst_idx] = tgt_data;
                 }
@@ -499,7 +479,7 @@ int main(int argc, char* argv[]) {
 
     if (process_average_arguments(argc, argv)) {
         printf("Program usage: %s\n", argv[0]);
-        printf("\t-r [latitude] -c [longitude] -y [year] -m [month] -h [hour (24hr)]\n");
+        printf("\t-c [longitude] -y [year] -m [month] -h [hour (24hr)]\n");
         printf("\t-i [input directory] -f [input file] -d [delete flag; no args]\n");
         printf("\t-o [output directory] -p [output FILE_CUR prefix] -s [output FILE_CUR suffix] -v [verbose; no args]\n");
         exit(1);
@@ -512,8 +492,6 @@ int main(int argc, char* argv[]) {
 
     load_nc_file(input_file_path);
     prepare_output_file(output_dir, input_file_name, suffix);
-
-
 
     if (gather(INPUT_LON, INPUT_HOUR, preceding_days, total_days)) {
         printf("Gather function failed\n");

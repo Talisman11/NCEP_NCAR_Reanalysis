@@ -215,7 +215,6 @@ size_t ___access_nc_array(size_t time_idx, size_t lvl_idx, size_t lat_idx, size_
 	return (TIME_STRIDE * time_idx) + (LVL_STRIDE * lvl_idx) + (LAT_STRIDE * lat_idx) + lon_idx;
 }
 
-
 int str_eq(char* test, const char* target) {
 	return strcmp(test, target) == 0;
 }
