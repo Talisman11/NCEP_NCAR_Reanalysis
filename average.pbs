@@ -5,10 +5,10 @@
 #PBS -l nodes=1:ppn=1
 
 ### set the wallclock time
-#PBS -l walltime=06:00:00
+#PBS -l walltime=02:00:00
 
 ### set the job name
-#PBS -N NCAR_Reanalysis
+#PBS -N NCAR_Average
 
 ### set the job stdout and stderr
 #PBS -e $PBS_JOBID.err
