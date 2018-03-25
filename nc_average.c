@@ -144,7 +144,7 @@ int process_average_arguments(int argc, char* argv[]) {
     return 0;
 }
 
-void metadata_suffix(char* suffix, double lon, int year, int month, int hour) {
+int metadata_suffix(char* suffix, double lon, int year, int month, int hour) {
     char l[16], y[8], m[8], h[8];
 
     sprintf(l, "_L%f", lon);
@@ -156,6 +156,8 @@ void metadata_suffix(char* suffix, double lon, int year, int month, int hour) {
     strcat(suffix, y);
     strcat(suffix, m);
     strcat(suffix, h);
+
+    return 0;
 }
 
 /* Returns the path and name of a .nc file matching the target year within the directory
