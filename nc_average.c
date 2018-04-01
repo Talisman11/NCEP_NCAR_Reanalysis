@@ -43,9 +43,10 @@ int NUM_VARS, NUM_DIMS;
 int LEAP_YEAR;
 size_t DAY_STRIDE;
 size_t TIME_CHUNK[] = {1};
-int TIME_ZONE[25] = {-12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, \
-                    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
-int TIME_ZONE_OFFSET[25] = { 0 };
+int TIME_ZONE_N = 26;
+int TIME_ZONE[26] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, \
+                    -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0};
+int TIME_ZONE_OFFSET[26] = { 0 };
 
 int process_average_arguments(int argc, char* argv[]) {
     int opt;
@@ -238,9 +239,8 @@ int calibrate(int *preceding_days, int *total_days, int year, int month) {
         end_m = 12;
     } else {
         start_m = month;
-        end_m = month + 1; // ?? why is there a 2 here?
+        end_m = month + 1;
     }
-    printf("start: %d, end: %d\n", start_m, end_m);
 
     // Set leap year flag
     LEAP_YEAR = days_in_month(year, 2) == 29 ? 1 : 0;
@@ -265,7 +265,7 @@ int find_longitude(size_t* lon_idx, size_t* lon_bin, double tgt_lon) {
 
     lon_data = vars[VAR_ID_LON].data;
 
-    *lon_bin = 0; // Start at UTC -12 for [0, 7.5] degrees. [352.5, 360.0] is UTC +12.
+    *lon_bin = 0; // Start at UTC 0 for [0, 7.5] degrees. [352.5, 360.0] is UTC 0, too
     for (int i = 0; i < vars[VAR_ID_LON].length; i++) {
         // Update which bin we are analyzing accordingly
         if (fmod(lon_data[i], 15.0) == 7.5) {
@@ -392,6 +392,7 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
         Broader and finer granularities currently unsupported.\n", input_file_name, vars[VAR_ID_SPECIAL].name);
         return 1;
     }
+    total_days = 1;
 
     /* Calibrate [start, end] range */
     time_start = DAY_STRIDE * preceding_days + tgt_hour; // Find start day idx, adjust for target hour
@@ -406,14 +407,15 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
     }
 
     /* Adjust the offset for each timezone */
-    for (int i = 0; i < 25; i++) {
+    for (int i = 0; i < TIME_ZONE_N; i++) {
         TIME_ZONE_OFFSET[i] = TIME_ZONE[i] - TIME_ZONE[tgt_lon_bin];
         printf("tz[%d] = %d\n", i, TIME_ZONE_OFFSET[i]);
     }
 
     /* Check if the arguments require the preceding file */
-    pre_diff = time_start - TIME_ZONE_OFFSET[24];
-    post_diff = time_end - TIME_ZONE_OFFSET[0];
+    pre_diff = time_start - 12;
+    post_diff = time_end + 12;
+
     printf("Time pre: %d\n", pre_diff);
     if (pre_diff < 0) {
         printf("Time dimension initial indices less than zero in Eastward direction (likely due to January selection).\n\
@@ -455,16 +457,18 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
     lon_data = vars[VAR_ID_LON].data;
     var_data = vars[VAR_ID_SPECIAL].data;
     output_data = output.data;
-    for (time = time_start; time < time_end && time < dims[DIM_ID_TIME].length; time++) {
+    for (time = time_start; time < time_end && time < dims[DIM_ID_TIME].length; time += 24) {
         printf("TIME: %lu\n", time);
         for (lvl = 0; lvl < dims[DIM_ID_LVL].length; lvl++) {
             for (lat = 0; lat < dims[DIM_ID_LAT].length; lat++) {
                 for (lon = 0, cur_lon_bin = 0; lon < dims[DIM_ID_LON].length; lon++) {
-                    if (fmod(lon_data[lon], 15.0) == 7.5) { // Find our current longitude bin to match with the corr. time zone
+
+                    if (fmod(lon_data[lon], 15.0) == 7.5 || lon_data[lon] == 180.0) { // Find our current longitude bin to match with the corr. time zone
                         cur_lon_bin += 1;
                     }
 
-                    time_offset = time - TIME_ZONE_OFFSET[cur_lon_bin];
+                    time_offset = time + TIME_ZONE_OFFSET[cur_lon_bin];
+                    printf("lon_data[%d] = %f => %f, cur_bin = %d, t_o = %d\n", lon, lon_data[lon], fmod(lon_data[lon], 15.0), cur_lon_bin, time_offset);
                     if (time_offset < 0) {
                         time_offset = prev_dims[DIM_ID_TIME].length + time_offset; // Access the tail of the PREV file's TIME
 
@@ -487,7 +491,8 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
                     if (time == time_start) {
                         output_data[dst_idx] = 0.0;
                     }
-                    output_data[dst_idx] += tgt_data / time_N; // mutliply by 1/N here
+
+                    output_data[dst_idx] += tgt_data / total_days; // mutliply by 1/N here
                 }
             }
         }
@@ -536,9 +541,8 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
-
-// TODO: average of each month -> 31 days of this hourly "average" should be converted to 1 value
-// --- 744 x 17 x 73 x 144 -> 1 x 17 x 73 x 744.
-// First give Yizhe the average for 2 months
-// --- Ultimately want the average for each months
-// --- Then the averrage of a year from these averages
+// TODO:
+// x Geopotential Height, Relative/Specific Humidity, Uwind, Vwind,
+// x Center at UTC 0 (argument), and fix it because "degrees east" is "degrees east of UTC0, not the Pacific Ocean".
+// x For the "daily shifted", skip every 24 hours (so discard 23 time slices)
+// - Do 2006
