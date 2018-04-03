@@ -51,6 +51,7 @@ int TIME_ZONE_OFFSET[26] = { 0 };
 int process_average_arguments(int argc, char* argv[]) {
     int opt;
 
+    MONTHLY_AVERAGE = 0;
     INPUT_LON = -1000.0;
     INPUT_YEAR = INPUT_MONTH = INPUT_HOUR = -1;
     while ((opt = getopt(argc, argv, "c:y:m:h:i:f:n:o:p:s:dMv")) != -1) {
