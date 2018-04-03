@@ -2,26 +2,11 @@
 #include <math.h>
 #include <string.h>
 
-int retval;
-int input_dir_flag = 0;
-int output_dir_flag = 0;
-char input_file_name[256];
-char input_file_path[256];
-char output_file[256];
-
-char prev_file_path[256];
-char prev_file_name[256];
-char next_file_path[256];
-char next_file_name[256];
-
-int INPUT_FILE_ID, OUTPUT_FILE_ID, PREV_FILE_ID, NEXT_FILE_ID;
-
 extern int disable_clobber;
 extern int enable_verbose;
 extern char input_dir[];
 extern char output_dir[];
 extern char prefix[];
-char argv_sfx[64] = "";
 
 /* Special indexing variables */
 extern int VAR_ID_TIME, VAR_ID_LVL, VAR_ID_LAT, VAR_ID_LON, VAR_ID_SPECIAL;
@@ -32,20 +17,35 @@ extern size_t LVL_STRIDE;
 extern size_t LAT_STRIDE;
 extern size_t SPECIAL_CHUNKS[4];
 
+int retval;
+int input_dir_flag = 0;
+int output_dir_flag = 0;
+char input_file_name[256];
+char input_file_path[256];
+char output_file[256];
+char argv_sfx[64] = "";
+
+char prev_file_path[256];
+char prev_file_name[256];
+char next_file_path[256];
+char next_file_name[256];
+
+/* File handles */
+int INPUT_FILE_ID, OUTPUT_FILE_ID, PREV_FILE_ID, NEXT_FILE_ID;
+
 /* Global variables specified by user */
 double INPUT_LON;
-int INPUT_YEAR, INPUT_MONTH, INPUT_HOUR;
+int INPUT_YEAR, INPUT_MONTH, INPUT_HOUR, MONTHLY_AVERAGE;
 
 Variable *vars, *prev_vars;
 Dimension *dims, *prev_dims;
 int NUM_VARS, NUM_DIMS;
 
+/* Time-related variables and flags, determined by data */
 int LEAP_YEAR;
 size_t DAY_STRIDE;
-size_t TIME_CHUNK[] = {1};
 int TIME_ZONE_N = 26;
-int TIME_ZONE[26] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, \
-                    -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0};
+int TIME_ZONE[26] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0};
 int TIME_ZONE_OFFSET[26] = { 0 };
 
 int process_average_arguments(int argc, char* argv[]) {
@@ -53,7 +53,7 @@ int process_average_arguments(int argc, char* argv[]) {
 
     INPUT_LON = -1000.0;
     INPUT_YEAR = INPUT_MONTH = INPUT_HOUR = -1;
-    while ((opt = getopt(argc, argv, "c:y:m:h:i:f:n:o:p:s:dv")) != -1) {
+    while ((opt = getopt(argc, argv, "c:y:m:h:i:f:n:o:p:s:dMv")) != -1) {
         switch(opt) {
             /* Primary user arguments prefixed with 'INPUT_' */
             case 'c': /* Longitude */
@@ -69,6 +69,9 @@ int process_average_arguments(int argc, char* argv[]) {
                 INPUT_HOUR = atoi(optarg);
                 break;
             /* Additional program args */
+            case 'M':
+                MONTHLY_AVERAGE = 1;
+                break;
             case 'i':
                 strcpy(input_dir, optarg);
                 input_dir_flag = 1;
@@ -118,6 +121,10 @@ int process_average_arguments(int argc, char* argv[]) {
         return 1;
     }
 
+    if (MONTHLY_AVERAGE) {
+        printf("-M flag encountered. Outputting the time-shifted monthly average\n");
+    }
+
     if (input_dir_flag != 1 || find_target_file(input_file_path, input_file_name, input_dir, INPUT_YEAR)) {
         fprintf(stderr, "Failed to find target file in input directory\n");
         return 1;
@@ -128,7 +135,7 @@ int process_average_arguments(int argc, char* argv[]) {
         strcpy(output_dir, input_dir);
     }
 
-    if (metadata_suffix(&argv_sfx, INPUT_LON, INPUT_YEAR, INPUT_MONTH, INPUT_HOUR)) {
+    if (metadata_suffix(&argv_sfx, INPUT_LON, INPUT_YEAR, INPUT_MONTH, INPUT_HOUR, MONTHLY_AVERAGE)) {
         printf("Could not generate argument suffix\n");
         return 1;
     }
@@ -145,8 +152,8 @@ int process_average_arguments(int argc, char* argv[]) {
     return 0;
 }
 
-int metadata_suffix(char* suffix, double lon, int year, int month, int hour) {
-    char l[16], y[8], m[8], h[8];
+int metadata_suffix(char* suffix, double lon, int year, int month, int hour, int monthly_average) {
+    char l[16], y[8], m[8], h[8], a[8];
 
     sprintf(l, "_L%f", lon);
     sprintf(y, "_Y%d", year);
@@ -157,6 +164,12 @@ int metadata_suffix(char* suffix, double lon, int year, int month, int hour) {
     strcat(suffix, y);
     strcat(suffix, m);
     strcat(suffix, h);
+
+    if (monthly_average) {
+        strcat(suffix, "_M");
+    } else {
+        strcat(suffix, "_D");
+    }
 
     return 0;
 }
@@ -231,7 +244,7 @@ int days_in_month(int y, int m) {
 }
 
 /* Prepares for processing */
-int calibrate(int *preceding_days, int *total_days, int year, int month) {
+int calibrate(int *preceding_days, int *total_days, int* leap_year, int year, int month) {
     int start_m, end_m, days;
 
     if (month == 0) {
@@ -242,8 +255,8 @@ int calibrate(int *preceding_days, int *total_days, int year, int month) {
         end_m = month + 1;
     }
 
-    // Set leap year flag
-    LEAP_YEAR = days_in_month(year, 2) == 29 ? 1 : 0;
+    /* Set leap year flag */
+    *leap_year = days_in_month(year, 2) == 29 ? 1 : 0;
 
     *total_days = 0; // zero the input value before adding to it
     *preceding_days = 0;
@@ -255,7 +268,7 @@ int calibrate(int *preceding_days, int *total_days, int year, int month) {
             *preceding_days += days;
         }
     }
-    printf("total_days: %d, preceding_days: %d\n", *total_days, *preceding_days);
+    printf("Total_days: %d, Preceding_days: %d\n", *total_days, *preceding_days);
 
     return 0;
 }
@@ -309,9 +322,10 @@ void load_nc_file(const char* file_path) {
     LAT_STRIDE  = dims[DIM_ID_LON].length;
 }
 
-void prepare_output_file(const char* output_dir, const char* file_name, const char* suffix) {
+void prepare_output_file(const char* output_dir, const char* file_name, const char* suffix, int time_slices) {
     char output_file[256];
-    Dimension time_single;
+    size_t time_chunk[1] = {1};
+    Dimension time_output;
 
     strcpy(output_file, output_dir);
     strncat(output_file, file_name, strlen(file_name) - 3); // Copy filename without filetype
@@ -320,12 +334,12 @@ void prepare_output_file(const char* output_dir, const char* file_name, const ch
 
     ___nc_create(output_file, &OUTPUT_FILE_ID);
 
-    /* Define dimensions, with Time dimension having length of 1 */
-    memcpy(&time_single, &dims[DIM_ID_TIME], sizeof(Dimension));
-    time_single.length = 1;
+    /* Define dimensions, with Time dimension having length of 1 or N (monthly vs daily output) */
+    memcpy(&time_output, &dims[DIM_ID_TIME], sizeof(Dimension));
+    time_output.length = MONTHLY_AVERAGE ? 1 : time_slices;
     for (int i = 0; i < NUM_DIMS; i++) {
         if (dims[i].id == DIM_ID_TIME) {
-            ___nc_def_dim(OUTPUT_FILE_ID, time_single);
+            ___nc_def_dim(OUTPUT_FILE_ID, time_output);
             continue;
         }
         ___nc_def_dim(OUTPUT_FILE_ID, dims[i]);
@@ -335,8 +349,8 @@ void prepare_output_file(const char* output_dir, const char* file_name, const ch
         ___nc_def_var(OUTPUT_FILE_ID, vars[i]);
     }
     /* Add chunking for time and special variable, and shuffle and deflate for the special */
-    configure_special_chunks(dims, SPECIAL_CHUNKS, TIME_CHUNK[0]);
-    variable_compression(OUTPUT_FILE_ID, VAR_ID_TIME, TIME_CHUNK, VAR_ID_SPECIAL, SPECIAL_CHUNKS);
+    configure_special_chunks(dims, SPECIAL_CHUNKS, time_chunk[0]);
+    variable_compression(OUTPUT_FILE_ID, VAR_ID_TIME, time_chunk, VAR_ID_SPECIAL, SPECIAL_CHUNKS);
 
     nc_enddef(OUTPUT_FILE_ID);
 
@@ -372,7 +386,7 @@ void populate_buffer_file(int file_id, Variable** buffer_vars, Dimension** buffe
 }
 
 int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
-    size_t time, lvl, lat, lon, src_idx, dst_idx;
+    size_t time, day, lvl, lat, lon, src_idx, dst_idx;
     size_t tgt_lon_idx, tgt_lon_bin, cur_lon_bin;
     size_t starts[vars[VAR_ID_SPECIAL].num_dims];
 	size_t counts[vars[VAR_ID_SPECIAL].num_dims];
@@ -392,7 +406,6 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
         Broader and finer granularities currently unsupported.\n", input_file_name, vars[VAR_ID_SPECIAL].name);
         return 1;
     }
-    total_days = 1;
 
     /* Calibrate [start, end] range */
     time_start = DAY_STRIDE * preceding_days + tgt_hour; // Find start day idx, adjust for target hour
@@ -457,7 +470,7 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
     lon_data = vars[VAR_ID_LON].data;
     var_data = vars[VAR_ID_SPECIAL].data;
     output_data = output.data;
-    for (time = time_start; time < time_end && time < dims[DIM_ID_TIME].length; time += 24) {
+    for (time = time_start, day = 0; time < time_end && time < dims[DIM_ID_TIME].length; time += 24, day++) {
         printf("TIME: %lu\n", time);
         for (lvl = 0; lvl < dims[DIM_ID_LVL].length; lvl++) {
             for (lat = 0; lat < dims[DIM_ID_LAT].length; lat++) {
@@ -468,7 +481,6 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
                     }
 
                     time_offset = time + TIME_ZONE_OFFSET[cur_lon_bin];
-                    printf("lon_data[%d] = %f => %f, cur_bin = %d, t_o = %d\n", lon, lon_data[lon], fmod(lon_data[lon], 15.0), cur_lon_bin, time_offset);
                     if (time_offset < 0) {
                         time_offset = prev_dims[DIM_ID_TIME].length + time_offset; // Access the tail of the PREV file's TIME
 
@@ -476,7 +488,6 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
                         tgt_data = prev_data[src_idx];
                     } else if (time_offset >= dims[DIM_ID_TIME].length) {
                         time_offset = time_offset - dims[DIM_ID_TIME].length; // Subtract the length of THIS file's TIME
-                        printf("next: offset: %d\n", time_offset);
 
                         src_idx = ___access_nc_array(time_offset, lvl, lat, lon);
                         tgt_data = next_data[src_idx];
@@ -492,15 +503,29 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
                         output_data[dst_idx] = 0.0;
                     }
 
-                    output_data[dst_idx] += tgt_data / total_days; // mutliply by 1/N here
+                    if (MONTHLY_AVERAGE) {
+                        output_data[dst_idx] += tgt_data / total_days; // mutliply by 1/N here
+                    } else {
+                        output_data[dst_idx] = tgt_data;
+                    }
                 }
             }
         }
+
+        /* Write data each time iteration */
+        if (!MONTHLY_AVERAGE) {
+            starts[0] = day;
+            if ((retval = nc_put_vara_float(OUTPUT_FILE_ID, output.id, starts, counts, output_data)))
+                NC_ERR(retval);
+        }
     }
 
-    starts[0] = 0;
-    if ((retval = nc_put_vara_float(OUTPUT_FILE_ID, output.id, starts, counts, output_data)))
-        NC_ERR(retval);
+    /* Write data only on last iteration */
+    if (MONTHLY_AVERAGE) {
+        starts[0] = 0;
+        if ((retval = nc_put_vara_float(OUTPUT_FILE_ID, output.id, starts, counts, output_data)))
+            NC_ERR(retval);
+    }
 
     nc_close(INPUT_FILE_ID);
     nc_close(OUTPUT_FILE_ID);
@@ -519,18 +544,18 @@ int main(int argc, char* argv[]) {
     if (process_average_arguments(argc, argv)) {
         printf("Program usage: %s\n", argv[0]);
         printf("\t-c [longitude] -y [year] -m [month] -h [hour (24hr)]\n");
-        printf("\t-i [input directory] -f [input file] -d [delete flag; no args]\n");
-        printf("\t-o [output directory] -p [output FILE_CUR prefix] -s [output FILE_CUR suffix] -v [verbose; no args]\n");
+        printf("\t-M [monthly average; no args] -d [delete flag; no args]\n");
+        printf("\t-i [input directory] -o [output directory] -s [output FILE_CUR suffix] -v [verbose; no args]\n");
         exit(1);
     }
 
-    if (calibrate(&preceding_days, &total_days, INPUT_YEAR, INPUT_MONTH)) {
+    if (calibrate(&preceding_days, &total_days, &LEAP_YEAR, INPUT_YEAR, INPUT_MONTH)) {
         printf("Calibrate function failed\n");
         exit(1);
     }
 
     load_nc_file(input_file_path);
-    prepare_output_file(output_dir, input_file_name, argv_sfx);
+    prepare_output_file(output_dir, input_file_name, argv_sfx, total_days);
 
     if (gather(INPUT_LON, INPUT_HOUR, preceding_days, total_days)) {
         printf("Gather function failed\n");
