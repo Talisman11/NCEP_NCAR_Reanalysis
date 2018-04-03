@@ -480,7 +480,8 @@ int gather(double tgt_lon, int tgt_hour, int preceding_days, int total_days) {
                         cur_lon_bin += 1;
                     }
 
-                    time_offset = time + TIME_ZONE_OFFSET[cur_lon_bin];
+                    time_offset = time - TIME_ZONE_OFFSET[cur_lon_bin];
+                    // printf("lon_data[%d] = %f => %f, cur_bin = %d, t_o = %d\n", lon, lon_data[lon], fmod(lon_data[lon], 15.0), cur_lon_bin, time_offset);
                     if (time_offset < 0) {
                         time_offset = prev_dims[DIM_ID_TIME].length + time_offset; // Access the tail of the PREV file's TIME
 
