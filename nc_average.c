@@ -54,7 +54,7 @@ int process_average_arguments(int argc, char* argv[]) {
     MONTHLY_AVERAGE = 0;
     INPUT_LON = -1000.0;
     INPUT_YEAR = INPUT_MONTH = INPUT_HOUR = -1;
-    while ((opt = getopt(argc, argv, "c:y:m:h:i:f:n:o:p:s:dMv")) != -1) {
+    while ((opt = getopt(argc, argv, "c:y:m:h:i:f:n:o:p:s:a:dv")) != -1) {
         switch(opt) {
             /* Primary user arguments prefixed with 'INPUT_' */
             case 'c': /* Longitude */
@@ -70,8 +70,8 @@ int process_average_arguments(int argc, char* argv[]) {
                 INPUT_HOUR = atoi(optarg);
                 break;
             /* Additional program args */
-            case 'M':
-                MONTHLY_AVERAGE = 1;
+            case 'a':
+                MONTHLY_AVERAGE = atoi(optarg);
                 break;
             case 'i':
                 strcpy(input_dir, optarg);
@@ -122,8 +122,8 @@ int process_average_arguments(int argc, char* argv[]) {
         return 1;
     }
 
-    if (MONTHLY_AVERAGE) {
-        printf("-M flag encountered. Outputting the time-shifted monthly average\n");
+    if (MONTHLY_AVERAGE < 0 || MONTHLY_AVERAGE > 1) {
+        fprintf(stderr, "Invalid output type. Must be 0 or 1 for -a flag\n");
     }
 
     if (input_dir_flag != 1 || find_target_file(input_file_path, input_file_name, input_dir, INPUT_YEAR)) {
@@ -149,7 +149,8 @@ int process_average_arguments(int argc, char* argv[]) {
     printf("\tInput file = %s\n", input_file_name);
     printf("\tOutput directory = %s\n", output_dir);
     printf("\tOutput file argv_sfx = %s\n", argv_sfx);
-
+    printf("\tOutput type = %d\n", MONTHLY_AVERAGE);
+    
     return 0;
 }
 
