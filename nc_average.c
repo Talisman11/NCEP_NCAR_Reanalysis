@@ -44,9 +44,10 @@ int NUM_VARS, NUM_DIMS;
 /* Time-related variables and flags, determined by data */
 int LEAP_YEAR;
 size_t DAY_STRIDE;
-int TIME_ZONE_N = 26;
-int TIME_ZONE[26] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0};
-int TIME_ZONE_OFFSET[26] = { 0 };
+int TIME_ZONE_N = 25;
+// int TIME_ZONE[26] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0};
+int TIME_ZONE[25] = {-12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+int TIME_ZONE_OFFSET[25] = { 0 };
 
 int process_average_arguments(int argc, char* argv[]) {
     int opt;
@@ -69,10 +70,10 @@ int process_average_arguments(int argc, char* argv[]) {
             case 'h': /* Hour on 24-Hour system */
                 INPUT_HOUR = atoi(optarg);
                 break;
-            /* Additional program args */
             case 'a':
                 MONTHLY_AVERAGE = atoi(optarg);
                 break;
+            /* Additional program args */
             case 'i':
                 strcpy(input_dir, optarg);
                 input_dir_flag = 1;
@@ -124,6 +125,7 @@ int process_average_arguments(int argc, char* argv[]) {
 
     if (MONTHLY_AVERAGE < 0 || MONTHLY_AVERAGE > 1) {
         fprintf(stderr, "Invalid output type. Must be 0 or 1 for -a flag\n");
+        return 1;
     }
 
     if (input_dir_flag != 1 || find_target_file(input_file_path, input_file_name, input_dir, INPUT_YEAR)) {
@@ -150,7 +152,7 @@ int process_average_arguments(int argc, char* argv[]) {
     printf("\tOutput directory = %s\n", output_dir);
     printf("\tOutput file argv_sfx = %s\n", argv_sfx);
     printf("\tOutput type = %d\n", MONTHLY_AVERAGE);
-    
+
     return 0;
 }
 
